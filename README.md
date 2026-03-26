@@ -21,11 +21,13 @@ Why this repo exists:
 
 Current source of truth:
 
-- validated environment:
-  /home/diego/Myopt/miniconda3/envs/molsyssuite-qt-spike
 - local manifest copied into this repo:
   - manifests/shiboken6.files.txt
   - manifests/shiboken6.runtime.txt
+- first self-contained packaging boundary staged in this repo:
+  - package_boundary/site-packages
+- original validated environment used to derive that first boundary:
+  /home/diego/Myopt/miniconda3/envs/molsyssuite-qt-spike
 - upstream codebase reference:
   - ~/repos@others/pyside-setup
 
@@ -44,12 +46,13 @@ Current repo layout:
   - devtools/conda-build
   - devtools/conda-envs
   - manifests
+  - package_boundary
 
 Current packaging approach:
 
 - first pass is manifest-driven rather than source-build-driven
-- `devtools/conda-build/build.sh` copies the validated `shiboken6` boundary
-  from the known-good environment into `$SP_DIR`
+- `devtools/conda-build/build.sh` copies the vendored `shiboken6` boundary
+  from `package_boundary/site-packages` into `$SP_DIR` by default
 - the source environment can be overridden with:
   - `SHIBOKEN6_UIBCDF_SOURCE_PREFIX`
 

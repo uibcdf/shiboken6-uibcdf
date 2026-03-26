@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOURCE_SITE_PACKAGES="${SHIBOKEN6_UIBCDF_SOURCE_PREFIX:-/home/diego/Myopt/miniconda3/envs/molsyssuite-qt-spike/lib/python3.13/site-packages}"
 REPO_ROOT="$(cd "${RECIPE_DIR}/../.." && pwd)"
+DEFAULT_SOURCE_SITE_PACKAGES="${REPO_ROOT}/package_boundary/site-packages"
+SOURCE_SITE_PACKAGES="${SHIBOKEN6_UIBCDF_SOURCE_PREFIX:-$DEFAULT_SOURCE_SITE_PACKAGES}"
 MANIFEST="${REPO_ROOT}/manifests/shiboken6.files.txt"
 
 if [ ! -d "$SOURCE_SITE_PACKAGES" ]; then

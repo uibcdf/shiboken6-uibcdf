@@ -58,6 +58,11 @@ copied into this repo:
 - `manifests/shiboken6.files.txt`
 - `manifests/shiboken6.runtime.txt`
 
+The first self-contained packaging boundary was then copied into this repo
+under:
+
+- `package_boundary/site-packages`
+
 The runtime-critical files are:
 
 - `shiboken6/Shiboken.abi3.so`
@@ -69,8 +74,8 @@ Current first-pass packaging is manifest-driven.
 
 That means:
 
-- `devtools/conda-build/build.sh` copies the known-good `shiboken6` boundary
-  from the validated environment into `$SP_DIR`
+- `devtools/conda-build/build.sh` copies the vendored `shiboken6` boundary
+  from `package_boundary/site-packages` into `$SP_DIR` by default
 - the source environment can be overridden with:
   - `SHIBOKEN6_UIBCDF_SOURCE_PREFIX`
 - this is intentionally a boundary-finding step before a more source-build-led
