@@ -29,6 +29,22 @@ Current source of truth:
 - upstream codebase reference:
   - ~/repos@others/pyside-setup
 
+Current repo layout:
+
+- upstream shiboken6 code is now staged directly in this repo:
+  - ApiExtractor
+  - generator
+  - libshiboken
+  - shibokenmodule
+  - cmake
+  - config.tests
+  - data
+  - tests
+- packaging/devtools remain repo-local and experimental:
+  - devtools/conda-build
+  - devtools/conda-envs
+  - manifests
+
 Current packaging approach:
 
 - first pass is manifest-driven rather than source-build-driven

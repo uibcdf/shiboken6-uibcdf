@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<typesystem package="smart">
+    <rejection class="*" argument-type="^std::nullptr_t&amp;?$"/>
+
+    <!-- Used in tests to check what C++ objects are allocated. -->
+    <object-type name="Registry" />
+
+    <!-- Current limitation: shared pointer python objects can only be instantiated from API usage,
+         like when they are returned as a result of a method, or passed as arguments. It is not
+         possible to explicitly instantiate a new shared pointer in python e.g. o = SharedPtr_Foo()
+         won't work.
+    -->
+    <smart-pointer-type name="SharedPtr" type="shared" getter="data" ref-count-method="useCount"
+                        null-check-method="isNull"
+                        instantiations="Integer,Smart::Integer2=Test::SmartInteger2Ptr,Obj"/>
+
+    <object-type name="Obj" />
+    <value-type name="Integer" />
+    <namespace-type name="Smart" generate="no">
+        <value-type name="Integer2" />
+    </namespace-type>
+    <!-- Just used to silence the warnings that shiboken doens't know what to do with this type -->
+    <custom-type name="RefData" />
+
+    <value-type name="StdOptionalTestBench"/>
+
+    <system-include file-name="memory"/>
+    <system-include file-name="optional"/>
+
+    <namespace-type name="std">
+        <include file-name="memory" location="global"/>
+        <modify-function signature="^.*$" remove="all"/>
+        <enum-type name="pointer_safety"/>
+        <smart-pointer-type name="shared_ptr" type="shared" getter="get"
+                            value-check-method="operator bool"
+                            ref-count-method="use_count"
+                            reset-method="reset"
+                            instantiations="Integer,int=StdIntPtr,double=::StdDoublePtr,std::string">
+            <include file-name="memory" location="global"/>
+        </smart-pointer-type>
+
+        <smart-pointer-type name="unique_ptr" type="unique" getter="get"
+                            value-check-method="operator bool"
+                            reset-method="reset"
+                            instantiations="Integer,Smart::Integer2,int">
+            <include file-name="memory" location="global"/>
+        </smart-pointer-type>
+
+        <smart-pointer-type name="optional" type="value-handle" getter="value"
+                            value-check-method="has_value"
+                            instantiations="Integer,int">
+            <include file-name="optional" location="global"/>
+            <!-- PYSIDE-3107: Generic rule constructing std::optional<T>' from 'T'. -->
+            <conversion-rule>
+                <target-to-native>
+                    <add-conversion type="Py_None">
+                    SBK_UNUSED(pyIn)
+                    %out = std::nullopt;
+                    </add-conversion>
+                    <add-conversion type="InstType" check="%CHECKTYPE[%OUTTYPE_0](%in)">
+                    %OUTTYPE_0 v = %CONVERTTOCPP[%OUTTYPE_0](%in);
+                    %out = %OUTTYPE(v);
+                    </add-conversion>
+                </target-to-native>
+            </conversion-rule>
+        </smart-pointer-type>
+
+    </namespace-type>
+    <object-type name="StdSharedPtrTestBench"/>
+    <object-type name="StdSharedPtrVirtualMethodTester"/>
+
+    <object-type name="StdUniquePtrTestBench"/>
+    <object-type name="StdUniquePtrVirtualMethodTester"/>
+
+    <namespace-type name="Test">
+        <enum-type name="DummyEnum"/>
+    </namespace-type>
+
+</typesystem>

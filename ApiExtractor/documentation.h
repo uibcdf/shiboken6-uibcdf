@@ -1,0 +1,63 @@
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#ifndef DOCUMENTATION_H
+#define DOCUMENTATION_H
+
+#include "documentation_enums.h"
+
+#include <QtCore/qstring.h>
+#include <QtCore/qcompare.h>
+
+QT_FORWARD_DECLARE_CLASS(QDebug)
+
+class Documentation
+{
+public:
+    Documentation() = default;
+    explicit Documentation(const QString &detailed,
+                           const QString &brief,
+                           const QString &sourceFile,
+                           DocumentationFormat fmt = DocumentationFormat::Native);
+
+    bool isEmpty() const;
+
+    void setValue(const QString& value, DocumentationType t = DocumentationType::Detailed);
+
+    DocumentationFormat format() const;
+    void setFormat(DocumentationFormat f);
+
+    bool equals(const Documentation &rhs) const;
+
+    bool hasDetailed() const { return !m_detailed.isEmpty(); }
+    const QString &detailed() const { return m_detailed; }
+    void setDetailed(const QString &detailed);
+
+    bool hasBrief() const { return !m_brief.isEmpty(); }
+    const QString &brief() const { return m_brief; }
+    void setBrief(const QString &brief);
+
+    bool hasSourceFile() const { return !m_sourceFile.isEmpty(); }
+    const QString &sourceFile() const { return m_sourceFile; }
+    void setSourceFile(const QString &newSourceFile) { m_sourceFile = newSourceFile; }
+
+private:
+    friend bool comparesEqual(const Documentation &lhs,
+                              const  Documentation &rhs) noexcept
+    {
+        return lhs.m_format == rhs.m_format && lhs.m_detailed == rhs.m_detailed
+               && lhs.m_brief == rhs.m_brief && lhs.m_sourceFile == rhs.m_sourceFile;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(Documentation)
+
+    QString m_detailed;
+    QString m_brief;
+    QString m_sourceFile;
+    DocumentationFormat m_format = DocumentationFormat::Native;
+};
+
+#ifndef QT_NO_DEBUG_STREAM
+QDebug operator<<(QDebug debug, const Documentation &);
+#endif
+
+#endif // DOCUMENTATION_H

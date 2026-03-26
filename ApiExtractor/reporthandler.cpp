@@ -1,0 +1,234 @@
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "reporthandler.h"
+#include "typedatabase.h"
+#include "messages.h"
+
+#include <QtCore/qelapsedtimer.h>
+#include <QtCore/qfile.h>
+#include <QtCore/qoperatingsystemversion.h>
+#include <QtCore/qset.h>
+
+#include <cstring>
+#include <cstdarg>
+#include <cstdio>
+
+using namespace Qt::StringLiterals;
+
+static const auto COLOR_END = "\033[0m"_ba;
+static const auto COLOR_YELLOW = "\033[1;33m"_ba;
+static const auto COLOR_GREEN = "\033[0;32m"_ba;
+
+static constexpr bool useTerminalColors()
+{
+    return QOperatingSystemVersion::currentType() != QOperatingSystemVersion::Windows
+#ifdef NOCOLOR
+        && false
+#endif
+        ;
+}
+
+static bool m_silent = false;
+static int m_warningCount = 0;
+static int m_suppressedCount = 0;
+static ReportHandler::DebugLevel m_debugLevel = ReportHandler::NoDebug;
+static QSet<QString> m_reportedWarnings;
+static QString m_prefix;
+static bool m_withinProgress = false;
+static QByteArray m_progressMessage;
+static int m_step_warning = 0;
+static QElapsedTimer m_timer;
+
+Q_LOGGING_CATEGORY(lcShiboken, "qt.shiboken")
+Q_LOGGING_CATEGORY(lcShibokenDoc, "qt.shiboken.doc")
+
+void ReportHandler::install()
+{
+    qInstallMessageHandler(ReportHandler::messageOutput);
+    startTimer();
+}
+
+void ReportHandler::startTimer()
+{
+    m_timer.start();
+}
+
+ReportHandler::DebugLevel ReportHandler::debugLevel()
+{
+    return m_debugLevel;
+}
+
+void ReportHandler::setDebugLevel(ReportHandler::DebugLevel level)
+{
+    m_debugLevel = level;
+}
+
+bool ReportHandler::setDebugLevelFromArg(const QString &level)
+{
+    bool result = true;
+    if (level == u"sparse")
+        ReportHandler::setDebugLevel(ReportHandler::SparseDebug);
+    else if (level == u"medium")
+        ReportHandler::setDebugLevel(ReportHandler::MediumDebug);
+    else if (level == u"full")
+        ReportHandler::setDebugLevel(ReportHandler::FullDebug);
+    else
+        result = false;
+    return result;
+}
+
+int ReportHandler::suppressedCount()
+{
+    return m_suppressedCount;
+}
+
+int ReportHandler::warningCount()
+{
+    return m_warningCount;
+}
+
+bool ReportHandler::isSilent()
+{
+    return m_silent;
+}
+
+void ReportHandler::setSilent(bool silent)
+{
+    m_silent = silent;
+}
+
+void ReportHandler::setPrefix(const QString &p)
+{
+    m_prefix = p;
+}
+
+void ReportHandler::messageOutput(QtMsgType type, const QMessageLogContext &context, const QString &text)
+{
+    // Check for file location separator added by SourceLocation
+    auto fileLocationPos = text.indexOf(u":\t");
+    if (type == QtWarningMsg) {
+        if (m_silent || m_reportedWarnings.contains(text))
+            return;
+        if (auto *db = TypeDatabase::instance()) {
+            const bool suppressed = fileLocationPos >= 0
+                ? db->isSuppressedWarning(QStringView{text}.mid(fileLocationPos + 2))
+                : db->isSuppressedWarning(text);
+            if (suppressed) {
+                ++m_suppressedCount;
+                return;
+            }
+        }
+        ++m_warningCount;
+        ++m_step_warning;
+        m_reportedWarnings.insert(text);
+    }
+    QString message = m_prefix;
+    if (!message.isEmpty())
+        message.append(u' ');
+    const auto prefixLength = message.size();
+    message.append(text);
+    // Replace file location tab by space
+    if (fileLocationPos >= 0)
+        message[prefixLength + fileLocationPos + 1] = u' ';
+    fprintf(stderr, "%s\n", qPrintable(qFormatLogMessage(type, context, message)));
+}
+
+static QByteArray timeStamp()
+{
+    const qint64 elapsed = m_timer.elapsed();
+    return elapsed > 5000
+        ? QByteArray::number(elapsed / 1000) + 's'
+        : QByteArray::number(elapsed) + "ms";
+}
+
+void ReportHandler::startProgress(const QByteArray& str)
+{
+    if (m_silent)
+        return;
+
+    if (m_withinProgress)
+        endProgress();
+
+    m_withinProgress = true;
+    m_progressMessage = str;
+}
+
+static void indentStdout(qsizetype n)
+{
+    for (qsizetype i = 0; i < n; ++i)
+        fputc(' ', stdout);
+}
+
+void ReportHandler::endProgress()
+{
+    if (m_silent)
+        return;
+
+    m_withinProgress = false;
+
+    std::fputs(m_prefix.toUtf8().constData(), stdout);
+    const auto ts = timeStamp();
+    if (ts.size() < 6)
+        indentStdout(6 - ts.size());
+    std::fputs(" [", stdout);
+    std::fputs(ts.constData(), stdout);
+    std::fputs("] ", stdout);
+    std::fputs(m_progressMessage.constData(), stdout);
+    if (m_progressMessage.size() < 60)
+        indentStdout(60 - m_progressMessage.size());
+    static const QByteArray ok = '['
+        + (useTerminalColors() ? COLOR_GREEN + "OK"_ba + COLOR_END : "OK"_ba)
+        + "]\n"_ba;
+    static const QByteArray warning = '['
+        + (useTerminalColors() ? COLOR_YELLOW + "WARNING"_ba + COLOR_END : "WARNING"_ba)
+        + "]\n"_ba;
+    std::fputs(m_step_warning == 0 ? ok.constData() : warning.constData(), stdout);
+    std::fflush(stdout);
+    m_progressMessage.clear();
+    m_step_warning = 0;
+}
+
+QByteArray ReportHandler::doneMessage()
+{
+    QByteArray result = "Done, " + m_prefix.toUtf8() + ' ' + timeStamp();
+    if (m_warningCount)
+        result += ", " + QByteArray::number(m_warningCount) + " warnings";
+    if (m_suppressedCount)
+        result += " (" + QByteArray::number(m_suppressedCount) + " known issues)";
+    return  result;
+}
+
+static QStringList generalMessages;
+
+void ReportHandler::addGeneralMessage(const QString &message)
+{
+    generalMessages.append(message);
+}
+
+static const char generalLogFile[] = "mjb_shiboken.log";
+
+void ReportHandler::writeGeneralLogFile(const QString &directory)
+{
+    if (generalMessages.isEmpty())
+        return;
+    QFile file(directory + u'/' + QLatin1StringView(generalLogFile));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qWarning(lcShiboken, "%s", qPrintable(msgCannotOpenForWriting(file)));
+        return;
+    }
+    for (const auto &m : std::as_const(generalMessages)) {
+        file.write(m.toUtf8());
+        file.putChar('\n');
+    }
+}
+
+void ReportHandler::dumpGeneralLogFile()
+{
+    std::fprintf(stdout, "\n--- %s  ---\n", generalLogFile);
+    for (const auto &m : std::as_const(generalMessages)) {
+        std::fputs(m.toUtf8().constData(), stdout);
+        std::fputc('\n', stdout);
+    }
+    std::fprintf(stdout, "--- End of %s ---\n\n", generalLogFile);
+}
