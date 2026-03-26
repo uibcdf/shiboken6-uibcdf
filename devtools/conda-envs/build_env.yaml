@@ -1,0 +1,8 @@
+channels:
+  - uibcdf
+  - conda-forge
+
+dependencies:
+  - conda-build
+  - anaconda-client
+  - pip
