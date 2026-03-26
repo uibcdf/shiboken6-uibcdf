@@ -11,10 +11,22 @@ build:
 requirements:
   host:
     - python =3.13
-    - pip
   run:
     - python =3.13
 
+test:
+  commands:
+    - test -f "$SP_DIR/shiboken6/Shiboken.abi3.so"
+    - test -f "$SP_DIR/shiboken6/libshiboken6.abi3.so.6.9"
+    - python -c "import shiboken6; print(shiboken6.__file__)"
+
 about:
-  summary: "Experimental UIBCDF-aligned shiboken6 package scaffold for Linux/Python 3.13."
+  summary: "Experimental UIBCDF-aligned shiboken6 package for Linux/Python 3.13."
   license: "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+  description: |
+    First experimental conda package boundary for the Qt-for-Python standalone
+    family used by MolSysViewer packaging research.
+
+extra:
+  recipe-maintainers:
+    - uibcdf

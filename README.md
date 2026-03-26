@@ -23,11 +23,19 @@ Current source of truth:
 
 - validated environment:
   /home/diego/Myopt/miniconda3/envs/molsyssuite-qt-spike
-- local manifests staged in molsysviewer:
-  - sandbox/qt_for_python_uibcdf_experiment/manifests/shiboken6.files.txt
-  - sandbox/qt_for_python_uibcdf_experiment/manifests/shiboken6.runtime.txt
+- local manifest copied into this repo:
+  - manifests/shiboken6.files.txt
+  - manifests/shiboken6.runtime.txt
 - upstream codebase reference:
   - ~/repos@others/pyside-setup
+
+Current packaging approach:
+
+- first pass is manifest-driven rather than source-build-driven
+- `devtools/conda-build/build.sh` copies the validated `shiboken6` boundary
+  from the known-good environment into `$SP_DIR`
+- the source environment can be overridden with:
+  - `SHIBOKEN6_UIBCDF_SOURCE_PREFIX`
 
 First-pass success criteria:
 
