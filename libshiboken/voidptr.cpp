@@ -270,7 +270,7 @@ static PyTypeObject *createVoidPtrType()
     };
 
     PyType_Spec SbkVoidPtrType_spec = {
-        "2:shiboken6.Shiboken.VoidPtr",
+        "2:shiboken6_uibcdf.Shiboken.VoidPtr",
         sizeof(SbkVoidPtrObject),
         0,
         Py_TPFLAGS_DEFAULT,

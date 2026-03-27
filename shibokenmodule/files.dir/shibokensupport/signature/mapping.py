@@ -409,7 +409,7 @@ type_map.update({
 def init_Shiboken():
     type_map.update({
         "PyType": type,
-        "shiboken6.bool": bool,
+        "shiboken6_uibcdf.bool": bool,
         "size_t": int,
     })
     return locals()

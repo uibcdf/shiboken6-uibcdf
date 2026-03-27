@@ -9,10 +9,21 @@ build:
   number: 0
 
 requirements:
+  build:
+    - {{ compiler('c') }}
+    - {{ compiler('cxx') }}
+    - cmake
+    - ninja
+    - pkg-config
   host:
     - python =3.13
+    - qt6-main =6.9.2
+    - clangdev
+    - llvmdev
   run:
     - python =3.13
+    - libgcc
+    - libstdcxx
 
 test:
   commands:

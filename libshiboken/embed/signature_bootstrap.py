@@ -89,7 +89,7 @@ def find_incarnated_files():
     """Newer functionality: This function checks if the support directory exist and
        returns it. If does not exist, we try to create it and return it. Otherwise,
        we return None."""
-    import shiboken6 as root
+    import shiboken6_uibcdf as root
     files_dir = Path(root.__file__).resolve().parent / "files.dir"
     handle_embedding_switch(files_dir)
     if files_dir.exists():
