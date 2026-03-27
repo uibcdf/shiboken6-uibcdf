@@ -1,12 +1,13 @@
-# Bootstrap 6.9.2
+# Bootstrap 6.10.2
 
 ## Scope
 
 This repo currently tracks the first Linux/Python 3.13 experimental UIBCDF line
-for `shiboken6` version `6.9.2`.
+for `shiboken6` version `6.10.2`.
 
-This is not yet a polished upstream-quality packaging recipe. It is the first
-reproducible UIBCDF line derived from the validated standalone investigation.
+This is not yet a polished upstream-quality packaging recipe. It is the current
+reproducible UIBCDF line after pivoting away from an earlier `6.9.2` bootstrap
+that turned out to vendor `6.10.2` source.
 
 ## Why This Repo Exists
 
@@ -52,7 +53,7 @@ It was derived from a validated runtime environment:
 
 - `/home/diego/Myopt/miniconda3/envs/molsyssuite-qt-spike`
 
-The manifest was generated from the installed wheel-family files and then
+That bootstrap manifest was generated from the installed wheel-family files and then
 copied into this repo:
 
 - `manifests/shiboken6.files.txt`
@@ -63,10 +64,13 @@ under:
 
 - `package_boundary/site-packages`
 
-The runtime-critical files are:
+Those bootstrap runtime-critical files are:
 
 - `shiboken6/Shiboken.abi3.so`
 - `shiboken6/libshiboken6.abi3.so.6.9`
+
+They remain useful historical evidence, but they are no longer the version line
+that this repo is treating as authoritative.
 
 ## Current Packaging Decision
 
@@ -80,6 +84,7 @@ Current packaging has two phases.
   - `SHIBOKEN6_UIBCDF_SOURCE_PREFIX`
 
 This phase made the validated runtime boundary explicit and reproducible.
+It began on top of the `6.9.2` wheel family.
 
 ### Phase 2: Source-Build-Led Namespace Split
 
@@ -91,6 +96,10 @@ also speak the suffixed namespace:
 
 The boundary and manifests are still useful evidence, but the final namespace
 split can no longer be completed only by rewriting staged Python files.
+
+This source-build phase also exposed that the vendored upstream source currently
+in the repo is on the `6.10.2` line, which is why this repo has now been
+realigned to `6.10.2` instead of continuing to pretend it is a `6.9.2` branch.
 
 ## Why We Chose This First Step
 
@@ -130,8 +139,16 @@ test phase and proved that:
 - the staged layout can be rewritten to `shiboken6_uibcdf/`
 - `__init__.py` can be rewritten away from `shiboken6.Shiboken`
 
-But the test still failed during import because `Shiboken.abi3.so` embeds a
-signature bootstrap that still imports canonical `shiboken6`.
+That specific blocker is now closed. The current source-build now:
+
+- configures successfully
+- compiles `libshiboken`, `ApiExtractor`, and the `shiboken6` generator
+- installs into the `_uibcdf` namespace
+
+The current remaining blocker is much narrower:
+
+- the recipe and tests must stay aligned with the actual `6.10.2` source line
+- not with the old bootstrap expectation of `libshiboken6.abi3.so.6.9`
 
 The relevant source-side hook is:
 
@@ -142,6 +159,8 @@ So the current conclusion is:
 - simple repackaging of the validated boundary is not enough to finish the
   `_uibcdf` namespace split
 - a true source rebuild is required for `shiboken6-uibcdf`
+- that source rebuild is now the authoritative path for this repo
+- and this repo should stay aligned with the actual vendored source version
 
 ## Relationship To The Other Two Repos
 
@@ -154,10 +173,10 @@ Dependency order for the family is:
 `PySide6_Essentials` depends on `shiboken6`.
 `PySide6_Addons` depends on both `shiboken6` and `PySide6_Essentials`.
 
-## How To Recreate This Repo For A Future 6.10.x Line
+## How To Recreate This Repo For A Future Line
 
-Use this same sequence, but on a new version branch such as `6.10.x` or the
-exact version branch you decide to support.
+Use this same sequence, but on a new exact version branch such as `6.11.x` or
+whatever source line you decide to support next.
 
 1. Validate a working environment for the target family version.
 2. Regenerate the file manifest for `shiboken6` from that environment.
@@ -174,7 +193,7 @@ exact version branch you decide to support.
 
 ## Things To Keep Stable
 
-- keep the repo version line aligned with the family version
+- keep the repo version line aligned with the actual vendored source version
 - do not silently mix payloads from different Qt-for-Python versions
 - treat this repo as one member of a family, not as a standalone decision
 - keep this document updated when the recipe or source boundary changes

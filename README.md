@@ -7,7 +7,7 @@ Current scope:
 
 - Linux
 - Python 3.13
-- version family: 6.9.2
+- version family: 6.10.2
 
 Why this repo exists:
 
@@ -21,10 +21,12 @@ Why this repo exists:
 
 Current source of truth:
 
-- local manifest copied into this repo:
+- legacy bootstrap manifest copied into this repo during the original 6.9.2
+  exploration:
   - manifests/shiboken6.files.txt
   - manifests/shiboken6.runtime.txt
-- first self-contained packaging boundary staged in this repo:
+- first self-contained packaging boundary staged in this repo during that
+  bootstrap:
   - package_boundary/site-packages
 - original validated environment used to derive that first boundary:
   /home/diego/Myopt/miniconda3/envs/molsyssuite-qt-spike
@@ -50,16 +52,15 @@ Current repo layout:
 
 Current packaging approach:
 
-- first pass is manifest-driven rather than source-build-driven
-- `devtools/conda-build/build.sh` copies the vendored `shiboken6` boundary
-  from `package_boundary/site-packages` into `$SP_DIR` by default
-- the source environment can be overridden with:
-  - `SHIBOKEN6_UIBCDF_SOURCE_PREFIX`
+- current active path is source-build-driven for the `_uibcdf` namespace split
+- the legacy manifest/boundary assets are kept as bootstrap evidence, not as
+  the final source of truth for the 6.10.2 line
 
-First-pass success criteria:
+Current success criteria:
 
-1. package the shiboken6 wheel boundary in a conda-shaped recipe
+1. build `shiboken6-uibcdf` from source as a true `6.10.2` line
 2. expose:
-   - shiboken6/Shiboken.abi3.so
-   - shiboken6/libshiboken6.abi3.so.6.9
-3. keep the repo scoped to boundary-finding, not final polished release flow
+   - `shiboken6_uibcdf/Shiboken.abi3.so`
+   - `shiboken6_uibcdf/libshiboken6.abi3.so.6.10`
+3. keep the repo scoped to the first coexistence-capable member of the
+   provisional UIBCDF Qt-for-Python family

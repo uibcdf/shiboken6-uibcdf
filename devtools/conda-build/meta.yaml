@@ -1,6 +1,6 @@
 package:
   name: shiboken6-uibcdf
-  version: "6.9.2"
+  version: "6.10.2"
 
 source:
   path: ../..
@@ -28,11 +28,11 @@ requirements:
 test:
   commands:
     - test -f "$SP_DIR/shiboken6_uibcdf/Shiboken.abi3.so"
-    - test -f "$SP_DIR/shiboken6_uibcdf/libshiboken6.abi3.so.6.9"
+    - test -f "$SP_DIR/shiboken6_uibcdf/libshiboken6.abi3.so.6.10"
     - python -c "import shiboken6_uibcdf; print(shiboken6_uibcdf.__file__)"
 
 about:
-  summary: "Experimental UIBCDF-aligned shiboken6 package for Linux/Python 3.13."
+  summary: "Experimental UIBCDF-aligned shiboken6 6.10.2 package for Linux/Python 3.13."
   license: "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
   description: |
     First experimental conda package boundary for the Qt-for-Python standalone
