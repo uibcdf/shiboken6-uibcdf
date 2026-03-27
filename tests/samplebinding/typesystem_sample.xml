@@ -120,25 +120,6 @@
         </conversion-rule>
     </primitive-type>
 
-    <primitive-type name="std::optional&lt;long&gt;">
-      <conversion-rule>
-          <native-to-target>
-          if (!%in.has_value())
-              Py_RETURN_NONE;
-          return PyLong_FromLong(%in.value());
-          </native-to-target>
-          <target-to-native>
-              <add-conversion type="Py_None">
-              SBK_UNUSED(%in)
-              %out = %OUTTYPE();
-              </add-conversion>
-              <add-conversion type="PyLong" check="PyLong_CheckExact(%in)">
-              %out = %OUTTYPE(PyLong_AsLong(%in));
-              </add-conversion>
-          </target-to-native>
-      </conversion-rule>
-    </primitive-type>
-
     <value-type name="MoveOnly"/>
     <object-type name="MoveOnlyHandler"/>
 
@@ -420,7 +401,6 @@
     -->
     <enum-type name="GlobalEnum"/>
     <enum-type name="GlobalOverloadFuncEnum"/>
-    <enum-type name="GlobalEnumAlias"/>
 
     <enum-type identified-by-value="AnonymousGlobalEnum_Value0"/>
 
@@ -438,10 +418,6 @@
             <enum-type name="SampleNamespace"/>
         </object-type>
         <value-type name="SomeClass">
-            <enum-type name="OptionAlias"/>
-            <modify-field name="None_" remove="true"/>
-            <modify-field name="RandomNumber" remove="true"/>
-            <modify-field name="RandomNumber" remove="true"/>
             <enum-type name="PublicScopedEnum"/>
             <value-type name="SomeInnerClass">
                 <object-type name="OkThisIsRecursiveEnough">
@@ -1255,7 +1231,7 @@
                 <replace-default-expression with="3000"/>
             </modify-argument>
             <inject-code class="native" position="beginning">
-                PyObject* new_arg0 = PyLong_FromLong(PyLong_AsLong(%PYARG_1) - %2);
+                PyObject* new_arg0 = PyLong_FromLong(PyLong_AS_LONG(%PYARG_1) - %2);
                 Py_DECREF(%PYARG_1);
                 %PYARG_1 = new_arg0;
             </inject-code>
@@ -1944,7 +1920,7 @@
         </add-function>
         <add-function signature="__repr__" return-type="str">
             <inject-code class="target" position="beginning">
-            ByteArray b(PepType_GetFullyQualifiedNameStr(Py_TYPE(%PYSELF)));
+            ByteArray b(Py_TYPE(%PYSELF)->tp_name);
             PyObject* aux = Shiboken::String::fromStringAndSize(%CPPSELF.data(), %CPPSELF.size());
             if (PyUnicode_CheckExact(aux)) {
                 PyObject* tmp = PyUnicode_AsASCIIString(aux);
@@ -2072,7 +2048,7 @@
                 <conversion-rule class="native">
                     // Does nothing really, just test the code generation
                     // of constructors whose arguments where
-                    long %out = PyLong_AsLong(%PYARG_1) + 1;
+                    long %out = PyLong_AS_LONG(%PYARG_1) + 1;
                 </conversion-rule>
             </modify-argument>
         </modify-function>

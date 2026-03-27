@@ -4,11 +4,21 @@
 #ifndef PEP384IMPL_H
 #define PEP384IMPL_H
 
-#include "sbkpython.h"
 #include "shibokenmacros.h"
 
 extern "C"
 {
+
+/*****************************************************************************
+ *
+ * RESOLVED: memoryobject.h
+ *
+ */
+
+// Extracted into bufferprocs27.h
+#ifdef Py_LIMITED_API
+#include "bufferprocs_py37.h"
+#endif
 
 /*****************************************************************************
  *
@@ -160,13 +170,7 @@ struct SbkQFlagsTypePrivate;
 /*****************************************************************************/
 
 // functions used everywhere
-
-/// (convenience) Return the unqualified type name
 LIBSHIBOKEN_API const char *PepType_GetNameStr(PyTypeObject *type);
-
-/// (convenience) Return the fully qualified type name(PepType_GetFullyQualifiedNameStr())
-/// as C-string
-LIBSHIBOKEN_API const char *PepType_GetFullyQualifiedNameStr(PyTypeObject *type);
 
 LIBSHIBOKEN_API PyObject *Pep_GetPartialFunction(void);
 
@@ -186,20 +190,15 @@ LIBSHIBOKEN_API int Pep_GetFlag(const char *name);
 LIBSHIBOKEN_API int Pep_GetVerboseFlag(void);
 #endif
 
-#if (defined(Py_LIMITED_API) && Py_LIMITED_API < 0x030C0000) || PY_VERSION_HEX < 0x030C0000
-#  define PEP_OLD_ERR_API
-#endif
-
 // pyerrors.h
-#ifdef PEP_OLD_ERR_API
+#if defined(Py_LIMITED_API) || PY_VERSION_HEX < 0x030C0000
 LIBSHIBOKEN_API PyObject *PepErr_GetRaisedException();
 LIBSHIBOKEN_API PyObject *PepException_GetArgs(PyObject *ex);
 LIBSHIBOKEN_API void PepException_SetArgs(PyObject *ex, PyObject *args);
 #else
-inline PyObject *PepErr_GetRaisedException() { return PyErr_GetRaisedException(); }
-inline PyObject *PepException_GetArgs(PyObject *ex) { return PyException_GetArgs(ex); }
-inline void PepException_SetArgs(PyObject *ex, PyObject *args)
-{ PyException_SetArgs(ex, args); }
+#  define PepErr_GetRaisedException PyErr_GetRaisedException
+#  define PepException_GetArgs PyException_GetArgs
+#  define PepException_SetArgs PyException_SetArgs
 #endif
 
 /*****************************************************************************
@@ -290,6 +289,48 @@ using PyCFunctionObject = struct _pycfunc;
 #ifdef Py_LIMITED_API
 LIBSHIBOKEN_API PyObject *PyRun_String(const char *, int, PyObject *, PyObject *);
 #endif
+
+/*****************************************************************************
+ *
+ * RESOLVED: abstract.h
+ *
+ */
+#ifdef Py_LIMITED_API
+
+// This definition breaks the limited API a little, because it re-enables the
+// buffer functions.
+// But this is no problem as we check it's validity for every version.
+
+// PYSIDE-1960 The buffer interface is since Python 3.11 part of the stable
+// API and we do not need to check the compatibility by hand anymore.
+
+typedef struct {
+     getbufferproc bf_getbuffer;
+     releasebufferproc bf_releasebuffer;
+} PyBufferProcs;
+
+typedef struct _Pepbuffertype {
+    PyVarObject ob_base;
+    void *skip[17];
+    PyBufferProcs *tp_as_buffer;
+} PepBufferType;
+
+#define PepType_AS_BUFFER(type)   \
+    reinterpret_cast<PepBufferType *>(type)->tp_as_buffer
+
+#define PyObject_CheckBuffer(obj) \
+    ((PepType_AS_BUFFER(Py_TYPE(obj)) != NULL) &&  \
+     (PepType_AS_BUFFER(Py_TYPE(obj))->bf_getbuffer != NULL))
+
+LIBSHIBOKEN_API int PyObject_GetBuffer(PyObject *ob, Pep_buffer *view, int flags);
+LIBSHIBOKEN_API void PyBuffer_Release(Pep_buffer *view);
+
+#else
+
+#define Pep_buffer                          Py_buffer
+#define PepType_AS_BUFFER(type)             ((type)->tp_as_buffer)
+
+#endif /* Py_LIMITED_API */
 
 /*****************************************************************************
  *
@@ -507,18 +548,6 @@ LIBSHIBOKEN_API PyObject *PepType_GetDict(PyTypeObject *type);
 LIBSHIBOKEN_API int PepType_SetDict(PyTypeObject *type, PyObject *dict);
 
 LIBSHIBOKEN_API void *PepType_GetSlot(PyTypeObject *type, int aSlot);
-
-// Runtime support for Python 3.13 stable ABI
-
-// Return dictionary of the global variables in the current execution frame
-LIBSHIBOKEN_API PyObject *PepEval_GetFrameGlobals();
-
-// Return a dictionary of the builtins in the current execution frame
-LIBSHIBOKEN_API PyObject *PepEval_GetFrameBuiltins();
-
-LIBSHIBOKEN_API int PepModule_AddType(PyObject *module, PyTypeObject *type);
-
-LIBSHIBOKEN_API int PepModule_Add(PyObject *module, const char *name, PyObject *value);
 
 /*****************************************************************************
  *

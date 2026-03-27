@@ -96,6 +96,10 @@ public:
 
     bool isAnonymous() const;
 
+    // Has the enum been declared inside a Q_ENUMS() macro in its enclosing class?
+    bool hasQEnumsDeclaration() const;
+    void setHasQEnumsDeclaration(bool on);
+
     EnumTypeEntryCPtr typeEntry() const;
     void setTypeEntry(const EnumTypeEntryCPtr &entry);
 

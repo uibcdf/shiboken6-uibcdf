@@ -3,7 +3,6 @@
 
 #include "sbkcppstring.h"
 #include "autodecref.h"
-#include "sbkpep.h"
 
 namespace Shiboken::String
 {

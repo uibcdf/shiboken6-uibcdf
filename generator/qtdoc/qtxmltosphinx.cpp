@@ -18,8 +18,6 @@
 #include <QtCore/qregularexpression.h>
 #include <QtCore/qxmlstream.h>
 
-#include <cstring>
-
 using namespace Qt::StringLiterals;
 
 QDebug operator<<(QDebug debug, const QtXmlToSphinxImage &i)
@@ -200,9 +198,9 @@ enum class WebXmlTag {
     heading, brief, para, italic, bold, see_also, snippet, dots, codeline,
     table, header, row, item, argument, teletype, link, inlineimage, image,
     list, term, raw, underline, superscript, code, badcode, legalese,
-    rst, section, quotefile, target, keyword, page, group,
+    rst, section, quotefile,
     // ignored tags
-    generatedlist, tableofcontents, quotefromfile, skipto,
+    generatedlist, tableofcontents, quotefromfile, skipto, target, page, group,
     // useless tags
     description, definition, printuntil, relation,
     // Doxygen tags
@@ -253,7 +251,6 @@ static const WebXmlTagHash &webXmlTagHash()
         {u"quotefromfile", WebXmlTag::quotefromfile},
         {u"skipto", WebXmlTag::skipto},
         {u"target", WebXmlTag::target},
-        {u"keyword", WebXmlTag::keyword},
         {u"page", WebXmlTag::page},
         {u"group", WebXmlTag::group},
         {u"description", WebXmlTag::description},
@@ -404,7 +401,6 @@ void QtXmlToSphinx::callHandler(WebXmlTag t, QXmlStreamReader &r)
         handleIgnoredTag(r);
         break;
     case WebXmlTag::target:
-    case WebXmlTag::keyword:
         handleTargetTag(r);
         break;
     case WebXmlTag::page:
@@ -692,13 +688,15 @@ QString QtXmlToSphinx::readSnippet(const QString &location, const QString &ident
 void QtXmlToSphinx::handleHeadingTag(QXmlStreamReader& reader)
 {
     static int headingSize = 0;
-    static char type{};
-    static constexpr const char types[] = R"(#*=-^")";
+    static char type;
+    static char types[] = { '-', '^' };
     QXmlStreamReader::TokenType token = reader.tokenType();
     if (token == QXmlStreamReader::StartElement) {
-        // Levels are 1..n. We start at #2 since <page> already uses '#' (1) for the title.
-        const auto typeIdx = std::size_t(reader.attributes().value(u"level"_s).toUInt()); // level 1..n
-        type = types[std::min(typeIdx, std::strlen(types) - 1)];
+        uint typeIdx = reader.attributes().value(u"level"_s).toUInt();
+        if (typeIdx >= sizeof(types))
+            type = types[sizeof(types)-1];
+        else
+            type = types[typeIdx];
     } else if (token == QXmlStreamReader::EndElement) {
         m_output << disableIndent << Pad(type, headingSize) << "\n\n"
             << enableIndent;
@@ -1307,7 +1305,7 @@ void QtXmlToSphinx::handlePageTag(QXmlStreamReader &reader)
        ? writeEscapedRstText(m_output, title)
        : writeEscapedRstText(m_output, fullTitle);
 
-    m_output << '\n' << Pad('#', size) << "\n\n"
+    m_output << '\n' << Pad('*', size) << "\n\n"
         << enableIndent;
 }
 
@@ -1317,7 +1315,7 @@ void QtXmlToSphinx::handleTargetTag(QXmlStreamReader &reader)
         return;
     const auto  name = reader.attributes().value("name");
     if (!name.isEmpty())
-        m_output << disableIndent << rstLabel(name.toString()) << enableIndent;
+        m_output << rstLabel(name.toString());
 }
 
 void QtXmlToSphinx::handleIgnoredTag(QXmlStreamReader&)

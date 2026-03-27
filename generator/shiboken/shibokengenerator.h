@@ -99,10 +99,6 @@ public:
     static QString minimalConstructorExpression(const ApiExtractorResult &api,
                                                 const TypeEntryCPtr &type);
 
-    /// Return the name of the _TypeF() function generated to get the PyTypeObject
-    static QString cpythonTypeName(const AbstractMetaClassCPtr &metaClass);
-    static QString cpythonTypeName(const ComplexTypeEntryCPtr &type);
-
 protected:
     bool doSetup() override;
 
@@ -162,8 +158,6 @@ protected:
     void processCodeSnip(QString &code) const;
     void processCodeSnip(QString &code, const QString &context) const;
     void processClassCodeSnip(QString &code, const GeneratorContext &context) const;
-    /// Replaces variables in a custom conversion type check snippet
-    void processTypeCheckCodeSnip(QString &code, const QString &context) const;
 
     /**
      *   Verifies if any of the function's code injections makes a call
@@ -265,10 +259,12 @@ protected:
     static QString converterObject(const AbstractMetaType &type) ;
     static QString converterObject(const TypeEntryCPtr &type);
 
-    /// Return a name prefixed by Sbk_ which can be used for naming variables in the code
     static QString cpythonBaseName(const AbstractMetaClassCPtr &metaClass);
-    static QString cpythonBaseName(const ComplexTypeEntryCPtr &type);
+    static QString cpythonBaseName(const TypeEntryCPtr &type);
     static QString containerCpythonBaseName(const ContainerTypeEntryCPtr &ctype);
+    static QString cpythonBaseName(const AbstractMetaType &type);
+    static QString cpythonTypeName(const AbstractMetaClassCPtr &metaClass);
+    static QString cpythonTypeName(const TypeEntryCPtr &type);
     static QString cpythonTypeNameExtSet(const TypeEntryCPtr &type);
     static QString cpythonTypeNameExtSet(const AbstractMetaType &type);
     static QString cpythonTypeNameExt(const TypeEntryCPtr &type);

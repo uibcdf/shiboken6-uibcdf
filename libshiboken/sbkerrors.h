@@ -7,8 +7,6 @@
 #include "sbkpython.h"
 #include "shibokenmacros.h"
 
-#include <memory>
-
 /// Craving for C++20 and std::source_location::current()
 #if defined(_MSC_VER)
 #  define SBK_FUNC_INFO     __FUNCSIG__
@@ -36,32 +34,6 @@ public:
 
 namespace Errors
 {
-
-struct ErrorStore;
-
-/// Temporarily stash an error set in Python
-class Stash
-{
-public:
-    Stash(const Stash &) = delete;
-    Stash &operator=(const Stash &) = delete;
-    Stash(Stash &&) = delete;
-    Stash &operator=(Stash &&) = delete;
-
-    LIBSHIBOKEN_API Stash();
-    LIBSHIBOKEN_API ~Stash();
-
-    LIBSHIBOKEN_API operator bool() const { return getException() != nullptr; }
-    [[nodiscard]] LIBSHIBOKEN_API PyObject *getException() const;
-
-    /// Restore the stored error
-    LIBSHIBOKEN_API void restore();
-    /// Discard the stored error
-    LIBSHIBOKEN_API void release();
-
-private:
-    std::unique_ptr<ErrorStore> m_store;
-};
 
 LIBSHIBOKEN_API void setIndexOutOfBounds(Py_ssize_t value, Py_ssize_t minValue,
                                          Py_ssize_t maxValue);

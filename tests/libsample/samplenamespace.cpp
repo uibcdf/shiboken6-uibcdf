@@ -11,16 +11,6 @@
 namespace SampleNamespace
 {
 
-SomeClass::OptionAlias SomeClass::passThroughOptionAlias(OptionAlias ov)
-{
-    return ov;
-}
-
-Option SomeClass::passThroughOption(Option ov)
-{
-    return ov;
-}
-
 // PYSIDE-817, scoped enums must not be converted to int in the wrappers generated
 // for the protected hacks
 SomeClass::PublicScopedEnum SomeClass::protectedMethodReturningPublicScopedEnum() const
@@ -105,15 +95,6 @@ double passReferenceToValueType(const Point &point, double multiplier)
 int passReferenceToObjectType(const ObjectType &obj, int multiplier)
 {
     return obj.objectName().size() * multiplier;
-}
-
-// Exercise specifying complete template specializations as primitive types.
-std::optional<long> optionalMultiply(const std::optional<long> &v1,
-                                     const std::optional<long> &v2)
-{
-    if (!v1.has_value() || !v2.has_value())
-        return std::nullopt;
-    return v1.value() * v2.value();
 }
 
 int variableInNamespace = 42;

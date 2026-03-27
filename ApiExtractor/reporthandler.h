@@ -41,7 +41,6 @@ public:
 
     static void addGeneralMessage(const QString &message);
     static void writeGeneralLogFile(const QString &directory);
-    static void dumpGeneralLogFile();
 
 private:
     static void messageOutput(QtMsgType type, const QMessageLogContext &context, const QString &msg);

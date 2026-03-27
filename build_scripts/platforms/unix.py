@@ -8,7 +8,7 @@ from pathlib import Path
 from ..log import log
 from ..config import config
 from ..options import OPTION
-from ..utils import (copydir, copyfile, copy_qt_metatypes, makefile, copy_cmake_config_dirs)
+from ..utils import copydir, copyfile, copy_qt_metatypes, makefile
 from .. import PYSIDE, SHIBOKEN
 from .linux import prepare_standalone_package_linux
 from .macos import prepare_standalone_package_macos
@@ -108,11 +108,11 @@ def prepare_packages_posix(pyside_build, _vars, cross_build=False):
             "{st_build_dir}/{st_package_name}/scripts/shiboken_tool.py",
             force=False, _vars=_vars)
 
-    if config.is_internal_shiboken_module_build() or config.is_internal_pyside_build():
-        # <install>/{cmake_package_name}/include/* -> <package_for_wheels>/{st_package_name}/include
+    if config.is_internal_shiboken_generator_build() or config.is_internal_pyside_build():
+        # <install>/include/* -> <setup>/{st_package_name}/include
         copydir(
-            "{install_dir}/{cmake_package_name}/include",
-            destination_dir / "include",
+            "{install_dir}/include/{cmake_package_name}",
+            "{st_build_dir}/{st_package_name}/include",
             _vars=_vars)
 
     if config.is_internal_pyside_build():
@@ -255,26 +255,6 @@ def prepare_packages_posix(pyside_build, _vars, cross_build=False):
         if config.is_internal_shiboken_generator_build():
             # Copy over clang before rpath patching.
             pyside_build.prepare_standalone_clang(is_win=False)
-
-    # Copy CMake config files
-    if config.is_internal_shiboken_generator_build():
-        # Copy Shiboken6Tools CMake package for generator
-        copy_cmake_config_dirs(
-            _vars["install_dir"], _vars["st_build_dir"],
-            _vars["st_package_name"], "Shiboken6Tools"
-        )
-    elif config.is_internal_shiboken_module_build():
-        # Copy Shiboken6 CMake package for module
-        copy_cmake_config_dirs(
-            _vars["install_dir"], _vars["st_build_dir"],
-            _vars["st_package_name"], "Shiboken6"
-        )
-    elif config.is_internal_pyside_build():
-        # Copy PySide6 CMake package
-        copy_cmake_config_dirs(
-            _vars["install_dir"], _vars["st_build_dir"],
-            _vars["st_package_name"], "PySide6"
-        )
 
     # Update rpath to $ORIGIN
     if (sys.platform.startswith('linux') or sys.platform.startswith('darwin')) and not is_android:

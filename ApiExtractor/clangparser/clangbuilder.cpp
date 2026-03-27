@@ -524,27 +524,6 @@ void BuilderPrivate::addTemplateInstantiations(const CXType &type,
         typeName->remove(pos.first, pos.second - pos.first);
 }
 
-static TypeCategory typeCategoryFromClang(CXTypeKind k)
-{
-    switch (k) {
-    case CXType_Void:
-        return TypeCategory::Void;
-    case CXType_Enum:
-        return TypeCategory::Enum;
-    case CXType_Pointer:
-    case CXType_BlockPointer:
-        return TypeCategory::Pointer;
-    case CXType_FunctionNoProto:
-    case CXType_FunctionProto:
-        return TypeCategory::Function;
-    default:
-        break;
-    }
-    if (k >= CXType_FirstBuiltin && k <= CXType_LastBuiltin)
-        return TypeCategory::Builtin;
-    return TypeCategory::Other;
-}
-
 TypeInfo BuilderPrivate::createTypeInfoUncached(const CXType &type,
                                                 bool *cacheable) const
 {
@@ -554,7 +533,6 @@ TypeInfo BuilderPrivate::createTypeInfoUncached(const CXType &type,
         if (argCount >= 0) {
             TypeInfo result = createTypeInfoUncached(clang_getResultType(pointeeType),
                                                      cacheable);
-            result.setTypeCategory(TypeCategory::Pointer);
             result.setFunctionPointer(true);
             for (int a = 0; a < argCount; ++a)
                 result.addArgument(createTypeInfoUncached(clang_getArgType(pointeeType, unsigned(a)),
@@ -564,7 +542,6 @@ TypeInfo BuilderPrivate::createTypeInfoUncached(const CXType &type,
     }
 
     TypeInfo typeInfo;
-    typeInfo.setTypeCategory(typeCategoryFromClang(clang_getCanonicalType(type).kind));
 
     CXType nestedType = type;
     for (; isArrayType(nestedType.kind); nestedType = clang_getArrayElementType(nestedType)) {
@@ -646,7 +623,6 @@ void BuilderPrivate::addTypeDef(const CXCursor &cursor, const CXType &cxType)
     setFileName(cursor, item.get());
     item->setType(createTypeInfo(cxType));
     item->setScope(m_scope);
-    item->setAccessPolicy(accessPolicy(clang_getCXXAccessSpecifier(cursor)));
     m_scopeStack.back()->addTypeDef(item);
 }
 
@@ -851,7 +827,6 @@ BuilderPrivate::SpecialSystemHeader
     }
 
     switch (clang::platform()) {
-    case Platform::Linux:
     case Platform::Unix:
         if (fileName == u"/usr/include/stdlib.h"
             || baseName == u"types.h"
@@ -861,7 +836,6 @@ BuilderPrivate::SpecialSystemHeader
         }
         break;
     case Platform::macOS:
-    case Platform::iOS:
         // Parse the following system headers to get the correct typdefs for types like
         // int32_t, which are used in the macOS implementation of OpenGL framework.
         // They are installed under /Applications/Xcode.app/Contents/Developer/Platforms...

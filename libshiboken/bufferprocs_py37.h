@@ -50,18 +50,9 @@ PSF LICENSE AGREEMENT FOR PYTHON 3.7.0
 #ifndef BUFFER_REENABLE_H
 #define BUFFER_REENABLE_H
 
-#include "sbkpython.h"
-#include "shibokenmacros.h"
-
-#ifdef Py_LIMITED_API
-
-// The buffer interface has been added to limited API in 3.11, (abstract.h, PYSIDE-1960,
-// except some internal structs).
-
-#  if Py_LIMITED_API < 0x030B0000
-
-struct Pep_buffer
-{
+/* buffer interface */
+// This has been renamed to Pep_buffer and will be used.
+typedef struct bufferinfo {
     void *buf;
     PyObject *obj;        /* owned reference */
     Py_ssize_t len;
@@ -74,33 +65,10 @@ struct Pep_buffer
     Py_ssize_t *strides;
     Py_ssize_t *suboffsets;
     void *internal;
-};
+} Pep_buffer;
 
 using getbufferproc =int (*)(PyObject *, Pep_buffer *, int);
 using releasebufferproc = void (*)(PyObject *, Pep_buffer *);
-using Py_buffer = Pep_buffer;
-
-#  else //  < 3.11
-
-using Pep_buffer = Py_buffer;
-
-#  endif // >= 3.11
-
-// The structs below are not part of the limited API.
-struct PepBufferProcs
-{
-    getbufferproc bf_getbuffer;
-    releasebufferproc bf_releasebuffer;
-};
-
-struct PepBufferType
-{
-    PyVarObject ob_base;
-    void *skip[17];
-    PepBufferProcs *tp_as_buffer;
-};
-
-#  if Py_LIMITED_API < 0x030B0000
 
 /* Maximum number of dimensions */
 #define PyBUF_MAX_NDIM 64
@@ -137,27 +105,5 @@ struct PepBufferType
 /* End buffer interface */
 LIBSHIBOKEN_API PyObject *PyMemoryView_FromBuffer(Pep_buffer *info);
 #define Py_buffer Pep_buffer
-
-#define PyObject_CheckBuffer(obj) \
-    ((PepType_AS_BUFFER(Py_TYPE(obj)) != NULL) &&  \
-     (PepType_AS_BUFFER(Py_TYPE(obj))->bf_getbuffer != NULL))
-
-LIBSHIBOKEN_API int PyObject_GetBuffer(PyObject *ob, Pep_buffer *view, int flags);
-LIBSHIBOKEN_API void PyBuffer_Release(Pep_buffer *view);
-
-#  endif // << 3.11
-
-#  define PepType_AS_BUFFER(type)   \
-reinterpret_cast<PepBufferType *>(type)->tp_as_buffer
-
-using PyBufferProcs = PepBufferProcs;
-
-#else // Py_LIMITED_API
-
-using PepBufferProcs = PyBufferProcs;
-
-#  define PepType_AS_BUFFER(type)             ((type)->tp_as_buffer)
-
-#endif // !Py_LIMITED_API
 
 #endif // BUFFER_REENABLE_H

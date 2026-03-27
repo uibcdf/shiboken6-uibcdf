@@ -492,40 +492,6 @@ void QtDocGenerator::generateClassRecursion(TextStream &s, const QString &target
     }
 }
 
-void QtDocGenerator::writeDetailedDescription(TextStream &s,
-                                              const AbstractMetaClassCPtr &metaClass,
-                                              const QString &scope,
-                                              QtXmlToSphinxImages *parsedImages) const
-{
-    auto documentation = metaClass->documentation();
-    writeInjectDocumentation(s, TypeSystem::DocModificationPrepend, metaClass,
-                             parsedImages);
-    if (!writeInjectDocumentation(s, TypeSystem::DocModificationReplace, metaClass,
-                                  parsedImages))
-        writeFormattedDetailedText(s, documentation, scope, parsedImages);
-    writeInjectDocumentation(s, TypeSystem::DocModificationAppend, metaClass,
-                             parsedImages);
-}
-
-enum ClassDescriptionMode
-{
-    NoDescription,
-    BriefOnly,
-    DetailedOnly,
-    BriefAndDetailed,
-    BriefAndDetailedSections,
-};
-
-static ClassDescriptionMode classDescriptionMode(const Documentation &doc)
-{
-    if (!doc.hasDetailed())
-        return doc.hasBrief() ? BriefOnly : NoDescription;
-    if (!doc.hasBrief())
-        return DetailedOnly;
-    return doc.detailed().contains("<section"_L1)
-        ? BriefAndDetailedSections : BriefAndDetailed;
-}
-
 void QtDocGenerator::doGenerateClass(TextStream &s, const QString &targetDir,
                                      const AbstractMetaClassCPtr &metaClass)
 {
@@ -540,33 +506,8 @@ void QtDocGenerator::doGenerateClass(TextStream &s, const QString &targetDir,
     QtXmlToSphinxImages parsedImages;
     auto documentation = metaClass->documentation();
     const QString scope = classScope(metaClass);
-
-    const auto descriptionMode = classDescriptionMode(documentation);
-    switch (descriptionMode) {
-    case NoDescription:
-    case DetailedOnly:
-        break;
-    case BriefOnly:
+    if (documentation.hasBrief())
         writeFormattedBriefText(s, documentation, scope, &parsedImages);
-        break;
-    case BriefAndDetailed: {
-        // A "collapse" sphinx directive can be used for brief/expanding to details
-        // for descriptions consisting of a paragraph sequence.
-        writeFormattedBriefText(s, documentation, scope, &parsedImages);
-        s << "\n\n.. collapse:: Details\n\n";
-        Indentation detailIndent(s);
-        writeDetailedDescription(s, metaClass, scope, &parsedImages);
-    }
-        break;
-    case BriefAndDetailedSections: {
-        // If the the description has nested <section>'s (which break collapse::), we
-        // use a 'more' label for the detailed text to be written further down.
-        QString brief = documentation.brief();
-        brief.insert(brief.lastIndexOf(u'<'), "<rst> More_...</rst>"_L1);
-        writeFormattedText(s, brief, documentation.format(), scope, &parsedImages);
-    }
-        break;
-    }
 
     if (!metaClass->baseClasses().isEmpty()) {
         if (m_options.inheritanceDiagram) {
@@ -604,17 +545,13 @@ void QtDocGenerator::doGenerateClass(TextStream &s, const QString &targetDir,
          "    translation, you can also let us know by creating a ticket on\n"
          "    https:/bugreports.qt.io/projects/PYSIDE\n\n";
 
-    switch (descriptionMode) {
-    case DetailedOnly:
-    case BriefAndDetailedSections:
-        s << '\n' << headline("Detailed Description");
-        if (descriptionMode == BriefAndDetailedSections)
-            s << ".. _More:\n";
-        writeDetailedDescription(s, metaClass, scope, &parsedImages);
-        break;
-    default:
-        break;
-    }
+    s << '\n' << headline("Detailed Description") << ".. _More:\n";
+
+    writeInjectDocumentation(s, TypeSystem::DocModificationPrepend, metaClass,
+                             &parsedImages);
+    if (!writeInjectDocumentation(s, TypeSystem::DocModificationReplace, metaClass, &parsedImages))
+        writeFormattedDetailedText(s, documentation, scope, &parsedImages);
+    writeInjectDocumentation(s, TypeSystem::DocModificationAppend, metaClass, &parsedImages);
 
     writeEnums(s, metaClass->enums(), scope, &parsedImages);
 
@@ -964,8 +901,8 @@ QString QtDocGenerator::translateToPythonType(const AbstractMetaType &type,
             strType.remove(u"QHash"_s);
             strType.remove(u"QMap"_s);
             QStringList types = strType.split(u',');
-            strType = "Dictionary with keys of type %1 and values of type %2."_L1
-                      .arg(types[0], types[1]);
+            strType = QString::fromLatin1("Dictionary with keys of type %1 and values of type %2.")
+                                         .arg(types[0], types[1]);
         }
         return strType;
     }

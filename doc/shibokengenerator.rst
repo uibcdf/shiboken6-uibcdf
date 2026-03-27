@@ -202,37 +202,14 @@ Options
     When '-' is passed as the first option in the list, none of the options
     built into shiboken will be added, allowing for a complete replacement.
 
-.. _compiler-option:
-
 ``--compiler=<type>``
     Emulated compiler type (g++, msvc, clang)
-
-.. _compiler-path-option:
 
 ``--compiler-path=<file>``
     Path to the compiler for determining builtin include paths
 
-.. _compiler-argument-option:
-
-``compiler-argument=<argument>``
-    Add an argument for the compiler for determining builtin include paths
-
-.. _platform-option:
-
-``--platform=<name>``
-    Emulated platform (``android``, ``darwin``, ``ios``, ``linux``, ``unix``, ``windows``).
-    ``CMAKE_SYSTEM_NAME`` may be used.
-
-.. _platform-version-option:
-
-``--platform-version=<version>``
-    Platform version
-
-.. _arch-option:
-
-``--arch=<name>``
-    Emulated architecture (``x86_64``, ``arm64``, ``i586``).
-    ``CMAKE_SYSTEM_PROCESSOR`` may be used.
+``--platform=<file>``
+    Emulated platform (windows, darwin, unix)
 
 .. _include-paths:
 
@@ -413,131 +390,3 @@ becomes
 .. code-block:: ini
 
      VALUE-ARGUMENT = VALUE
-
-
-.. _cross-compilation:
-
-Cross Compilation
-=================
-
-Shiboken uses **libclang** to parse the headers of the library to be exposed.
-When compiling for another platform, the clang parser should ideally use the
-target of the platform.
-
-Simple bindings may already work when the parser uses the default host platform
-target. But for bigger projects like Qt, it is important that macros like
-``QT_POINTER_SIZE`` and the platform defines ``Q_OS_XXX`` are set correctly
-when parsing files like ``qsystemdetection.h`` or ``qprocessordetection.h``.
-Some Qt API might be excluded depending on platform and there might be subtle
-differences depending on word size.
-
-For platform and architecture, the relevant command line options are
-:ref:`platform-option` and :ref:`arch-option`. They take common platform names
-and architectures as used in target triplets and can be set to the values of
-the CMake variables ``CMAKE_SYSTEM_NAME`` and ``CMAKE_SYSTEM_PROCESSOR``,
-respectively. If the specified platform is different from the host, Shiboken
-will pass a target triplet based on them to the clang parser.
-
-Optionally, the version of the platform can be specified using the
-:ref:`platform-version-option`. This is useful when the clang parser defaults
-to a too-old version.
-
-If this results in a wrong or too generic triplet, it is also possible to
-directly pass a target triplet in the Clang options specified by
-:ref:`clang_option`. In this case, Shiboken will not pass a target triplet and
-try to derive the platform/architecture from this triplet.
-
-When using the ``Clang`` and ``GNU`` compilers for cross-compiling, the
-:ref:`compiler-path-option` option should be specified since Shiboken may need
-to run the compiler to determine system include paths. For most cases, passing
-the value of the CMake variable ``CMAKE_CXX_COMPILER`` should work. If the
-compiler is in the path, it should suffice to pass the compiler type to
-:ref:`compiler-option` (value of ``CMAKE_CXX_COMPILER_ID``).
-
-It is possible (for example, when targeting Android) that ``CMAKE_CXX_COMPILER``
-is a generic compiler that also needs a ``--target=`` or similar option to
-locate the correct system include paths. In this case (shiboken failing due to
-not finding some system headers), the :ref:`compiler-argument-option` can be
-passed to specify the target.
-
-Typically, a ``CMakeLists.txt`` files will then look like:
-
-.. code-block:: cmake
-
-    if (CMAKE_CROSSCOMPILING)
-        list(APPEND shiboken_command "--platform=${CMAKE_SYSTEM_NAME}"
-                                     "--arch=${CMAKE_SYSTEM_PROCESSOR}"
-                                     "--compiler-path=${CMAKE_CXX_COMPILER}")
-    endif()
-
-When passing the target triplet:
-
-.. code-block:: cmake
-
-    if (CMAKE_CROSSCOMPILING)
-        list(APPEND shiboken_command "--clang-option=--target=aarch64-none-linux-android"
-                                     "--compiler-path=${CMAKE_CXX_COMPILER}")
-    endif()
-
-***********
-CMake Usage
-***********
-
-The ``Shiboken6Tools`` CMake package provides an easy way to invoke the
-Shiboken generator from CMake to create Python bindings for C++ libraries. It
-is contained in the ``shiboken6_generator`` wheel. This is achieved using the
-``shiboken_generator_create_binding`` CMake function. This function automates
-the process of generating binding sources and building the Python extension
-module.
-
-Function Signature
-==================
-
-.. code-block:: cmake
-
-    shiboken_generator_create_binding(
-        TARGET_NAME <name>
-        GENERATED_SOURCES <generated_sources>
-        HEADERS <headers>
-        TYPESYSTEM_FILE <typesystem_file>
-        CPP_LIBRARY <cpp_library>
-        [QT_MODULES <qt_modules>]
-        [EXTRA_OPTIONS <extra_options>]
-        [FORCE_LIMITED_API]
-    )
-
-Arguments
-*********
-
-* ``TARGET_NAME``: Name of the Python extension module target to create.
-* ``GENERATED_SOURCES``: List of C++ source files generated by Shiboken.
-* ``HEADERS``: List of C++ header files to parse.
-* ``TYPESYSTEM_FILE``: Path to the typesystem XML file.
-* ``CPP_LIBRARY``: C++ library to link against.
-* ``QT_MODULES`` (optional): List of Qt modules required for the binding.
-* ``EXTRA_OPTIONS`` (optional): Additional command line options for Shiboken.
-* ``FORCE_LIMITED_API`` (optional): Use the Limited API for the generated extension module.
-
-Usage Example
-*************
-
-.. code-block:: cmake
-
-    shiboken_generator_create_binding(
-        TARGET_NAME MyBinding
-        GENERATED_SOURCES ${generated_sources}
-        HEADERS ${wrapped_header}
-        TYPESYSTEM_FILE ${typesystem_file}
-        CPP_LIBRARY ${my_library}
-        QT_MODULES Core Gui Widgets
-        EXTRA_OPTIONS --some-extra-option
-        FORCE_LIMITED_API
-    )
-
-This macro will generate the binding sources, build the Python module, and link it with the specified
-libraries and include paths.
-
-For complete usage examples, see:
-
-* `SampleBinding Example <https://doc.qt.io/qtforpython-6/examples/example_samplebinding_samplebinding.html>`_
-* `WidgetBinding Example <https://doc.qt.io/qtforpython-6/examples/example_widgetbinding_widgetbinding.html>`_

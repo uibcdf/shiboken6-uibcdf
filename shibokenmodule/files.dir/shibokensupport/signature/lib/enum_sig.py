@@ -53,12 +53,6 @@ def is_inconsistent_overload(signatures):
     return count != 0 and count != len(signatures)
 
 
-def is_relevant_type(thing):
-    t = str(type(thing))
-    return (("PySide" in t or "getset_descriptor" in t)
-            and "QMetaObject" not in t)
-
-
 class ExactEnumerator:
     """
     ExactEnumerator enumerates all signatures in a module as they are.
@@ -86,7 +80,7 @@ class ExactEnumerator:
         global EnumMeta, Signal, SignalInstance
         try:
             # Lazy import
-            from PySide6.QtCore import Qt, Signal, SignalInstance
+            from PySide6_uibcdf.QtCore import Qt, Signal, SignalInstance
             EnumMeta = type(Qt.Key)
         except ImportError:
             EnumMeta = Signal = SignalInstance = None
@@ -184,9 +178,7 @@ class ExactEnumerator:
             # Support attributes that have PySide types as values,
             # but we skip the 'staticMetaObject' that needs
             # to be defined at a QObject level.
-            # PYSIDE-3034: added public variables, extracted helper function to
-            # avoid repetitive calls of str(type(thing))
-            elif is_relevant_type(thing):
+            elif "PySide" in str(type(thing)) and "QMetaObject" not in str(type(thing)):
                 if class_name not in attributes:
                     attributes[class_name] = {}
                 attributes[class_name][thing_name] = thing

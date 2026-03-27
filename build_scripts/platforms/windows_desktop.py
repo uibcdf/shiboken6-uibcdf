@@ -12,8 +12,9 @@ from pathlib import Path
 from ..log import log
 from ..config import config
 from ..options import OPTION
-from ..utils import (copydir, copyfile, copy_qt_metatypes, download_and_extract_7z,
-                     filter_match, makefile, in_coin, coin_job_id, copy_cmake_config_dirs)
+from ..utils import (copydir, copyfile, copy_qt_metatypes,
+                     download_and_extract_7z, filter_match, makefile, in_coin,
+                     coin_job_id)
 from .. import PYSIDE, SHIBOKEN, PYSIDE_WINDOWS_BIN_TOOLS, PYSIDE_MULTIMEDIA_LIBS
 
 
@@ -94,10 +95,10 @@ def prepare_packages_win32(pyside_build, _vars):
             _filter=pdbs,
             recursive=False, _vars=_vars)
 
-    if config.is_internal_shiboken_module_build() or config.is_internal_pyside_build():
-        # <install>/{cmake_package_name}/include/* -> <package_for_wheels>/{st_package_name}/include
+    if config.is_internal_shiboken_generator_build() or config.is_internal_pyside_build():
+        # <install>/include/* -> <setup>/{st_package_name}/include
         copydir(
-            "{install_dir}/{cmake_package_name}/include",
+            "{install_dir}/include/{cmake_package_name}",
             destination_dir / "include",
             _vars=_vars)
 
@@ -200,8 +201,6 @@ def prepare_packages_win32(pyside_build, _vars):
     if config.is_internal_pyside_build() or config.is_internal_shiboken_generator_build():
         copy_qt_artifacts(pyside_build, destination_qt_dir, copy_pdbs, _vars)
         download_qt_dependency_dlls(_vars, destination_dir, msvc_redist)
-
-    copy_cmake_packages(_vars)
 
 
 # MSVC redistributable file list.
@@ -441,33 +440,3 @@ def copy_qt_artifacts(pyside_build, destination_qt_dir, copy_pdbs, _vars):
     if copy_clang or platform.machine() == "ARM64":
         # Qt CI is using dynamic libclang with arm config.
         pyside_build.prepare_standalone_clang(is_win=True)
-
-
-def copy_cmake_packages(_vars):
-    if config.is_internal_shiboken_generator_build():
-        print("copy_cmake_config_dirs called for Shiboken6Tools with:",
-              "_vars['install_dir'] =", _vars["install_dir"],
-              "_vars['st_build_dir'] =", _vars["st_build_dir"],
-              "_vars['st_package_name'] =", _vars["st_package_name"])
-        copy_cmake_config_dirs(
-            _vars["install_dir"], _vars["st_build_dir"],
-            _vars["st_package_name"], "Shiboken6Tools"
-        )
-    elif config.is_internal_shiboken_module_build():
-        print("copy_cmake_config_dirs called for Shiboken6 with:",
-              "_vars['install_dir'] =", _vars["install_dir"],
-              "_vars['st_build_dir'] =", _vars["st_build_dir"],
-              "_vars['st_package_name'] =", _vars["st_package_name"])
-        copy_cmake_config_dirs(
-            _vars["install_dir"], _vars["st_build_dir"],
-            _vars["st_package_name"], "Shiboken6"
-        )
-    elif config.is_internal_pyside_build():
-        print("copy_cmake_config_dirs called for PySide6 with:",
-              "_vars['install_dir'] =", _vars["install_dir"],
-              "_vars['st_build_dir'] =", _vars["st_build_dir"],
-              "_vars['st_package_name'] =", _vars["st_package_name"])
-        copy_cmake_config_dirs(
-            _vars["install_dir"], _vars["st_build_dir"],
-            _vars["st_package_name"], "PySide6"
-        )

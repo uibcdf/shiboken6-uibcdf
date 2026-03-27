@@ -187,10 +187,10 @@ class Reloader:
         candidates = list(mod_name for mod_name in sys.modules.copy()
                           if self.module_valid(sys.modules[mod_name]))
         for mod_name in candidates:
-            # 'top' is PySide6 when we do 'import PySide.QtCore'
+            # 'top' is PySide6_uibcdf when we do 'import PySide.QtCore'
             # or Shiboken if we do 'import Shiboken'.
             # Convince yourself that these two lines below have the same
-            # global effect as "import Shiboken" or "import PySide6.QtCore".
+            # global effect as "import Shiboken" or "import PySide6_uibcdf.QtCore".
             top = __import__(mod_name)
             g[top.__name__] = top
             proc_name = "init_" + mod_name.replace(".", "_")
@@ -199,7 +199,7 @@ class Reloader:
                 g.update(g.pop(proc_name)())
 
             # Also record an efficient list of modules for PySide.
-            if mod_name.startswith("PySide6."):
+            if mod_name.startswith("PySide6_uibcdf."):
                 pyside_modules.add(mod_name)
 
 
@@ -266,7 +266,6 @@ type_map.update({
     "QSet": typing.Set,
     "QString": str,
     "QLatin1String": str,
-    "QAnyStringView": str,
     "QStringView": str,
     "QStringList": StringList,
     "quint16": int,
@@ -360,7 +359,7 @@ type_map.update({
 
 type_map.update({
     # Handling variables that are returned, eventually as Tuples:
-    "PySide6.QtQml.atomic[bool]": ResultVariable(bool),  # QmlIncubationController::incubateWhile()
+    "PySide6_uibcdf.QtQml.atomic[bool]": ResultVariable(bool),  # QmlIncubationController::incubateWhile()
     "bool*"         : ResultVariable(bool),
     "float*"        : ResultVariable(float),
     "int*"          : ResultVariable(int),
@@ -485,10 +484,10 @@ def init_smart():
 
 
 # The PySide Part
-def init_PySide6_QtCore():
-    from PySide6.QtCore import Qt, QUrl, QDir, QByteArray
-    from PySide6.QtCore import QRect, QRectF, QSize, QPoint
-    from PySide6.QtCore import QMarginsF  # 5.9
+def init_PySide6_uibcdf_QtCore():
+    from PySide6_uibcdf.QtCore import Qt, QUrl, QDir, QByteArray
+    from PySide6_uibcdf.QtCore import QRect, QRectF, QSize, QPoint
+    from PySide6_uibcdf.QtCore import QMarginsF  # 5.9
 
     type_map.update({
         "' '": " ",
@@ -496,29 +495,28 @@ def init_PySide6_QtCore():
         "'g'": "g",
         "4294967295UL": 4294967295,  # 5.6, RHEL 6.6
         "CheckIndexOption.NoOption": Instance(
-            "PySide6.QtCore.QAbstractItemModel.CheckIndexOptions.NoOption"),  # 5.11
+            "PySide6_uibcdf.QtCore.QAbstractItemModel.CheckIndexOptions.NoOption"),  # 5.11
         "DescriptorType(-1)": int,  # Native handle of QSocketDescriptor
         "false": False,
-        "list of QAbstractAnimation": typing.List[PySide6.QtCore.QAbstractAnimation],
+        "list of QAbstractAnimation": typing.List[PySide6_uibcdf.QtCore.QAbstractAnimation],
         "long long": int,
         "size_t": int,
         "NULL": None,  # 5.6, MSVC
         "nullptr": None,  # 5.9
         # PYSIDE-2517: findChild/findChildren type hints:
-        "PlaceholderType": typing.TypeVar("PlaceholderType", bound=PySide6.QtCore.QObject),
+        "PlaceholderType": typing.TypeVar("PlaceholderType", bound=PySide6_uibcdf.QtCore.QObject),
         "PyBuffer": typing.Union[bytes, bytearray, memoryview],
         "PyByteArray": bytearray,
         "PyBytes": typing.Union[bytes, bytearray, memoryview],
         "PyTuple": typing.Tuple,
-        "QDeadlineTimer.Forever": PySide6.QtCore.QDeadlineTimer.ForeverConstant.Forever,
-        "QDeadlineTimer(QDeadlineTimer.Forever)": Instance("PySide6.QtCore.QDeadlineTimer"),
-        "PySide6.QtCore.QUrl.ComponentFormattingOptions":
-            PySide6.QtCore.QUrl.ComponentFormattingOption,  # mismatch option/enum, why???
+        "QDeadlineTimer.Forever": PySide6_uibcdf.QtCore.QDeadlineTimer.ForeverConstant.Forever,
+        "QDeadlineTimer(QDeadlineTimer.Forever)": Instance("PySide6_uibcdf.QtCore.QDeadlineTimer"),
+        "PySide6_uibcdf.QtCore.QUrl.ComponentFormattingOptions":
+            PySide6_uibcdf.QtCore.QUrl.ComponentFormattingOption,  # mismatch option/enum, why???
         "PyUnicode": typing.Text,
-        "QByteArray": typing.Union[PySide6.QtCore.QByteArray, bytes, bytearray, memoryview],
-        "QByteArrayView": PySide6.QtCore.QByteArray,
+        "QByteArrayView": PySide6_uibcdf.QtCore.QByteArray,
         "Q_NULLPTR": None,
-        "QCalendar.Unspecified": PySide6.QtCore.QCalendar.Unspecified,
+        "QCalendar.Unspecified": PySide6_uibcdf.QtCore.QCalendar.Unspecified,
         "QCborTag(-1)": ulong_max,
         "QEvent.Type.None": None,
         "QGenericArgument((0))": ellipsis,  # 5.6, RHEL 6.6. Is that ok?
@@ -527,58 +525,53 @@ def init_PySide6_QtCore():
         "QGenericArgument(NULL)": ellipsis,  # 5.6, MSVC
         "QGenericArgument(nullptr)": ellipsis,  # 5.10
         "QGenericArgument(Q_NULLPTR)": ellipsis,
-        "QJsonObject": typing.Dict[str, PySide6.QtCore.QJsonValue],
-        "QModelIndex()": Invalid("PySide6.QtCore.QModelIndex"),  # repr is btw. very wrong, fix it?!
-        "QModelIndexList": typing.List[PySide6.QtCore.QModelIndex],
-        "PySideSignalInstance": PySide6.QtCore.SignalInstance,
+        "QJsonObject": typing.Dict[str, PySide6_uibcdf.QtCore.QJsonValue],
+        "QModelIndex()": Invalid("PySide6_uibcdf.QtCore.QModelIndex"),  # repr is btw. very wrong, fix it?!
+        "QModelIndexList": typing.List[PySide6_uibcdf.QtCore.QModelIndex],
+        "PySideSignalInstance": PySide6_uibcdf.QtCore.SignalInstance,
         "QString()": "",
-        "Flag.Default": Instance("PySide6.QtCore.QStringConverterBase.Flags"),
+        "Flag.Default": Instance("PySide6_uibcdf.QtCore.QStringConverterBase.Flags"),
         "QStringList()": [],
         "QStringRef": str,
         "QStringRef": str,
         "Qt.HANDLE": int,  # be more explicit with some constants?
         "QUrl.FormattingOptions(QUrl.ComponentFormattingOption.PrettyDecoded)":
-            PySide6.QtCore.QUrl.ComponentFormattingOption.PrettyDecoded,
+            PySide6_uibcdf.QtCore.QUrl.ComponentFormattingOption.PrettyDecoded,
         "QVariant()": Invalid(Variant),
         "QVariant.Type": type,  # not so sure here...
         "QVariantMap": typing.Dict[str, Variant],
         "std.chrono.seconds{5}" : ellipsis,
-        "Internal.defaultTryTimeout": 5000,
-        "static_cast<int>(Internal.defaultTryTimeout.count())": 5000
     })
     from shibokensupport.signature.parser import using_snake_case
     if using_snake_case():
         type_map.update({
-            "QKeyCombination.fromCombined(0)": PySide6.QtCore.QKeyCombination.from_combined(0),
+            "QKeyCombination.fromCombined(0)": PySide6_uibcdf.QtCore.QKeyCombination.from_combined(0),
         })
     # special case - char* can either be 'bytes' or 'str'. The default is 'bytes'.
     # Here we manually set it to map to 'str'.
-    type_map_tuple.update({("PySide6.QtCore.QObject.setProperty", "char*"): str})
-    type_map_tuple.update({("PySide6.QtCore.QObject.property", "char*"): str})
-    type_map_tuple.update({("PySide6.QtCore.QObject.inherits", "char*"): str})
-    type_map_tuple.update({("PySide6.QtCore.QObject.connect", "char*"): str})
-    type_map_tuple.update({("PySide6.QtCore.QObject.disconnect", "char*"): str})
-    type_map_tuple.update({("PySide6.QtCore.QObject.receivers", "char*"): str})
-    type_map_tuple.update({("PySide6.QtCore.qtTrId", "char*"): str})
-    # special case - char default is 'int'.
-    # Here we manually set it to map to 'str'.
-    type_map_tuple.update({("PySide6.QtCore.QLocale.toString", "char"): str})
+    type_map_tuple.update({("PySide6_uibcdf.QtCore.QObject.setProperty", "char*"): str})
+    type_map_tuple.update({("PySide6_uibcdf.QtCore.QObject.property", "char*"): str})
+    type_map_tuple.update({("PySide6_uibcdf.QtCore.QObject.inherits", "char*"): str})
+    type_map_tuple.update({("PySide6_uibcdf.QtCore.QObject.connect", "char*"): str})
+    type_map_tuple.update({("PySide6_uibcdf.QtCore.QObject.disconnect", "char*"): str})
+    type_map_tuple.update({("PySide6_uibcdf.QtCore.QObject.receivers", "char*"): str})
+    type_map_tuple.update({("PySide6_uibcdf.QtCore.qtTrId", "char*"): str})
 
     return locals()
 
 
-def init_PySide6_QtConcurrent():
+def init_PySide6_uibcdf_QtConcurrent():
     type_map.update({
-        "PySide6.QtCore.QFuture[QString]":
-        PySide6.QtConcurrent.QFutureQString,
-        "PySide6.QtCore.QFuture[void]":
-        PySide6.QtConcurrent.QFutureVoid,
+        "PySide6_uibcdf.QtCore.QFuture[QString]":
+        PySide6_uibcdf.QtConcurrent.QFutureQString,
+        "PySide6_uibcdf.QtCore.QFuture[void]":
+        PySide6_uibcdf.QtConcurrent.QFutureVoid,
     })
     return locals()
 
 
-def init_PySide6_QtGui():
-    from PySide6.QtGui import QPageLayout, QPageSize  # 5.12 macOS
+def init_PySide6_uibcdf_QtGui():
+    from PySide6_uibcdf.QtGui import QPageLayout, QPageSize  # 5.12 macOS
     type_map.update({
         "0.0f": 0.0,
         "1.0f": 1.0,
@@ -589,7 +582,7 @@ def init_PySide6_QtGui():
         "HICON": int,
         "HMONITOR": int,
         "HRGN": int,
-        "QPixmap()": Default("PySide6.QtGui.QPixmap"),  # can't create without qApp
+        "QPixmap()": Default("PySide6_uibcdf.QtGui.QPixmap"),  # can't create without qApp
         "QPlatformSurface*": int,  # a handle
         "QVector< QTextLayout.FormatRange >()": [],  # do we need more structure?
         "uint32_t": int,
@@ -599,13 +592,13 @@ def init_PySide6_QtGui():
 
     # special case - char* can either be 'bytes' or 'str'. The default is 'bytes'.
     # Here we manually set it to map to 'str'.
-    type_map_tuple.update({("PySide6.QtGui.QPixmap.save", "char*"): str})
+    type_map_tuple.update({("PySide6_uibcdf.QtGui.QPixmap.save", "char*"): str})
 
     return locals()
 
 
-def init_PySide6_QtWidgets():
-    from PySide6.QtWidgets import (QWidget, QMessageBox, QStyleOption,
+def init_PySide6_uibcdf_QtWidgets():
+    from PySide6_uibcdf.QtWidgets import (QWidget, QMessageBox, QStyleOption,
                                    QStyleHintReturn, QStyleOptionComplex,
                                    QGraphicsItem, QStyleOptionGraphicsItem)
     type_map.update({
@@ -617,28 +610,28 @@ def init_PySide6_QtWidgets():
             "Qt.MatchFlags(Qt.MatchExactly | Qt.MatchCaseSensitive)"),
         "static_cast<Qt.MatchFlag>(Qt.MatchExactly|Qt.MatchCaseSensitive)": Instance(
             "Qt.MatchFlag(Qt.MatchExactly | Qt.MatchCaseSensitive)"),
-        "QListWidgetItem.ItemType.Type": PySide6.QtWidgets.QListWidgetItem.Type,
-        "QTableWidgetItem.ItemType.Type": PySide6.QtWidgets.QTableWidgetItem.Type,
-        "QTreeWidgetItem.ItemType.Type": PySide6.QtWidgets.QTreeWidgetItem.Type,
+        "QListWidgetItem.ItemType.Type": PySide6_uibcdf.QtWidgets.QListWidgetItem.Type,
+        "QTableWidgetItem.ItemType.Type": PySide6_uibcdf.QtWidgets.QTableWidgetItem.Type,
+        "QTreeWidgetItem.ItemType.Type": PySide6_uibcdf.QtWidgets.QTreeWidgetItem.Type,
     })
     return locals()
 
 
-def init_PySide6_QtSql():
-    from PySide6.QtSql import QSqlDatabase
+def init_PySide6_uibcdf_QtSql():
+    from PySide6_uibcdf.QtSql import QSqlDatabase
     type_map.update({
-        "QSqlDatabase.defaultConnectionName()": "",
+        "QLatin1StringView(QSqlDatabase.defaultConnection)": QSqlDatabase.defaultConnection,
         "QVariant.Invalid": Invalid("Variant"),  # not sure what I should create, here...
     })
     return locals()
 
 
-def init_PySide6_QtNetwork():
-    from PySide6.QtNetwork import QNetworkRequest, QHostAddress
+def init_PySide6_uibcdf_QtNetwork():
+    from PySide6_uibcdf.QtNetwork import QNetworkRequest, QHostAddress
     best_structure = typing.OrderedDict if getattr(typing, "OrderedDict", None) else typing.Dict
     type_map.update({
-        "QMultiMap[PySide6.QtNetwork.QSsl.AlternativeNameEntryType, QString]":
-            best_structure[PySide6.QtNetwork.QSsl.AlternativeNameEntryType, typing.List[str]],
+        "QMultiMap[PySide6_uibcdf.QtNetwork.QSsl.AlternativeNameEntryType, QString]":
+            best_structure[PySide6_uibcdf.QtNetwork.QSsl.AlternativeNameEntryType, typing.List[str]],
         "DefaultTransferTimeoutConstant":
             QNetworkRequest.TransferTimeoutConstant,
         "QNetworkRequest.DefaultTransferTimeoutConstant":
@@ -648,7 +641,7 @@ def init_PySide6_QtNetwork():
     return locals()
 
 
-def init_PySide6_QtOpenGL():
+def init_PySide6_uibcdf_QtOpenGL():
     type_map.update({
         "GLbitfield": int,
         "GLenum": int,
@@ -659,33 +652,33 @@ def init_PySide6_QtOpenGL():
     return locals()
 
 
-def init_PySide6_QtQml():
+def init_PySide6_uibcdf_QtQml():
     type_map.update({
-        "VolatileBool": PySide6.QtQml.VolatileBool,
+        "VolatileBool": PySide6_uibcdf.QtQml.VolatileBool,
     })
     return locals()
 
 
-def init_PySide6_QtQuick():
+def init_PySide6_uibcdf_QtQuick():
     type_map.update({
-        "PySide6.QtQuick.QSharedPointer[PySide6.QtQuick.QQuickItemGrabResult]":
-            PySide6.QtQuick.QQuickItemGrabResult,
+        "PySide6_uibcdf.QtQuick.QSharedPointer[PySide6_uibcdf.QtQuick.QQuickItemGrabResult]":
+            PySide6_uibcdf.QtQuick.QQuickItemGrabResult,
         "QSGGeometry.Type.UnsignedShortType": int,
     })
     return locals()
 
 
-def init_PySide6_QtTest():
+def init_PySide6_uibcdf_QtTest():
     type_map.update({
-        "PySide6.QtTest.QTest.PySideQTouchEventSequence": PySide6.QtTest.QTest.QTouchEventSequence,
-        "PySide6.QtTest.QTouchEventSequence": PySide6.QtTest.QTest.QTouchEventSequence,
+        "PySide6_uibcdf.QtTest.QTest.PySideQTouchEventSequence": PySide6_uibcdf.QtTest.QTest.QTouchEventSequence,
+        "PySide6_uibcdf.QtTest.QTouchEventSequence": PySide6_uibcdf.QtTest.QTest.QTouchEventSequence,
     })
     return locals()
 
 
 # from 5.12, macOS
-def init_PySide6_QtDataVisualization():
-    from PySide6.QtDataVisualization import (QBarDataItem, QSurfaceDataItem)
+def init_PySide6_uibcdf_QtDataVisualization():
+    from PySide6_uibcdf.QtDataVisualization import (QBarDataItem, QSurfaceDataItem)
     QBarDataRow = typing.List[QBarDataItem]
     QBarDataArray = typing.List[QBarDataRow]
     QSurfaceDataRow = typing.List[QSurfaceDataItem]
@@ -700,15 +693,15 @@ def init_PySide6_QtDataVisualization():
     return locals()
 
 
-def init_PySide6_QtBluetooth():
+def init_PySide6_uibcdf_QtBluetooth():
     type_map.update({
         "QVariant*": object,
     })
     return locals()
 
 
-def init_PySide6_QtGraphs():
-    from PySide6.QtGraphs import (QBarDataItem, QSurfaceDataItem)
+def init_PySide6_uibcdf_QtGraphs():
+    from PySide6_uibcdf.QtGraphs import (QBarDataItem, QSurfaceDataItem)
     QBarDataRow = typing.List[QBarDataItem]
     QBarDataArray = typing.List[QBarDataRow]
     QSurfaceDataRow = typing.List[QSurfaceDataItem]
@@ -723,7 +716,7 @@ def init_PySide6_QtGraphs():
     return locals()
 
 
-def init_PySide6_QtHttpServer():
+def init_PySide6_uibcdf_QtHttpServer():
     type_map.update({
         "qMakePair(1u, 1u)": (1, 1),
     })
@@ -743,65 +736,37 @@ def init_testbinding():
 
 # Functions which should return Optional(result) but don't.
 missing_optional_return = {
-    "PySide6.QtCore.QObject.parent",
-    "PySide6.QtGui.QGuiApplication.modalWindow",
-    "PySide6.QtGui.QGuiApplication.screenAt",
-    "PySide6.QtWidgets.QApplication.activeModalWidget",
-    "PySide6.QtWidgets.QApplication.activePopupWidget",
-    "PySide6.QtWidgets.QApplication.activeWindow",
-    "PySide6.QtWidgets.QApplication.focusWidget",
-    "PySide6.QtWidgets.QApplication.setStyle",
-    "PySide6.QtWidgets.QApplication.topLevelAt",
-    "PySide6.QtWidgets.QApplication.widgetAt",
-    "PySide6.QtWidgets.QBoxLayout.itemAt",
-    "PySide6.QtWidgets.QBoxLayout.takeAt",
-    "PySide6.QtWidgets.QButtonGroup.checkedButton",
-    "PySide6.QtWidgets.QComboBox.completer",
-    "PySide6.QtWidgets.QComboBox.lineEdit",
-    "PySide6.QtWidgets.QComboBox.validator",
-    "PySide6.QtWidgets.QCompleter.popup",
-    "PySide6.QtWidgets.QFormLayout.itemAt",
-    "PySide6.QtWidgets.QFormLayout.takeAt",
-    "PySide6.QtWidgets.QGraphicsAnchorLayout.itemAt",
-    "PySide6.QtWidgets.QGraphicsGridLayout.itemAt",
-    "PySide6.QtWidgets.QGraphicsLayout.itemAt",
-    "PySide6.QtWidgets.QGraphicsLinearLayout.itemAt",
-    "PySide6.QtWidgets.QGraphicsScene.itemAt",
-    "PySide6.QtWidgets.QGraphicsView.itemAt",
-    "PySide6.QtWidgets.QGridLayout.itemAt",
-    "PySide6.QtWidgets.QGridLayout.itemAtPosition",
-    "PySide6.QtWidgets.QGridLayout.takeAt",
-    "PySide6.QtWidgets.QLayout.itemAt",
-    "PySide6.QtWidgets.QLayout.replaceWidget",
-    "PySide6.QtWidgets.QLayout.takeAt",
-    "PySide6.QtWidgets.QListWidget.itemAt",
-    "PySide6.QtWidgets.QScrollArea.widget",
-    "PySide6.QtWidgets.QSplitter.widget",
-    "PySide6.QtWidgets.QStackedLayout.itemAt",
-    "PySide6.QtWidgets.QStackedLayout.takeAt",
-    "PySide6.QtWidgets.QStackedLayout.widget",
-    "PySide6.QtWidgets.QStackedWidget.widget",
-    "PySide6.QtWidgets.QTabWidget.widget",
-    "PySide6.QtWidgets.QTableWidget.horizontalHeaderItem",
-    "PySide6.QtWidgets.QTableWidget.item",
-    "PySide6.QtWidgets.QTableWidget.itemAt",
-    "PySide6.QtWidgets.QTableWidget.mimeData",
-    "PySide6.QtWidgets.QToolBox.widget",
-    "PySide6.QtWidgets.QTreeWidget.itemAt",
-    "PySide6.QtWidgets.QTreeWidget.takeTopLevelItem",
-    "PySide6.QtWidgets.QTreeWidget.topLevelItem",
-    "PySide6.QtWidgets.QWidget.childAt",
-    "PySide6.QtWidgets.QWidget.find",
-    "PySide6.QtWidgets.QWidget.focusProxy",
-    "PySide6.QtWidgets.QWidget.graphicsEffect",
-    "PySide6.QtWidgets.QWidget.graphicsProxyWidget",
-    "PySide6.QtWidgets.QWidget.keyboardGrabber",
-    "PySide6.QtWidgets.QWidget.layout",
-    "PySide6.QtWidgets.QWidget.mouseGrabber",
-    "PySide6.QtWidgets.QWidget.nativeParentWidget",
-    "PySide6.QtWidgets.QWidget.nextInFocusChain",
-    "PySide6.QtWidgets.QWidget.parentWidget",
-    "PySide6.QtWidgets.QWidget.previousInFocusChain",
+    "PySide6_uibcdf.QtWidgets.QApplication.activeModalWidget",
+    "PySide6_uibcdf.QtWidgets.QApplication.activePopupWidget",
+    "PySide6_uibcdf.QtWidgets.QApplication.activeWindow",
+    "PySide6_uibcdf.QtWidgets.QApplication.focusWidget",
+    "PySide6_uibcdf.QtWidgets.QApplication.setStyle",
+    "PySide6_uibcdf.QtWidgets.QApplication.topLevelAt",
+    "PySide6_uibcdf.QtWidgets.QApplication.widgetAt",
+    "PySide6_uibcdf.QtWidgets.QComboBox.completer",
+    "PySide6_uibcdf.QtWidgets.QComboBox.lineEdit",
+    "PySide6_uibcdf.QtWidgets.QComboBox.validator",
+    "PySide6_uibcdf.QtWidgets.QGridLayout.itemAt",
+    "PySide6_uibcdf.QtWidgets.QGridLayout.itemAtPosition",
+    "PySide6_uibcdf.QtWidgets.QLayout.itemAt",
+    "PySide6_uibcdf.QtWidgets.QTableWidget.horizontalHeaderItem",
+    "PySide6_uibcdf.QtWidgets.QTableWidget.item",
+    "PySide6_uibcdf.QtWidgets.QTableWidget.itemAt",
+    "PySide6_uibcdf.QtWidgets.QTableWidget.mimeData",
+    "PySide6_uibcdf.QtWidgets.QTreeWidget.takeTopLevelItem",
+    "PySide6_uibcdf.QtWidgets.QTreeWidget.topLevelItem",
+    "PySide6_uibcdf.QtWidgets.QWidget.childAt",
+    "PySide6_uibcdf.QtWidgets.QWidget.find",
+    "PySide6_uibcdf.QtWidgets.QWidget.focusProxy",
+    "PySide6_uibcdf.QtWidgets.QWidget.graphicsEffect",
+    "PySide6_uibcdf.QtWidgets.QWidget.graphicsProxyWidget",
+    "PySide6_uibcdf.QtWidgets.QWidget.keyboardGrabber",
+    "PySide6_uibcdf.QtWidgets.QWidget.layout",
+    "PySide6_uibcdf.QtWidgets.QWidget.mouseGrabber",
+    "PySide6_uibcdf.QtWidgets.QWidget.nativeParentWidget",
+    "PySide6_uibcdf.QtWidgets.QWidget.nextInFocusChain",
+    "PySide6_uibcdf.QtWidgets.QWidget.parentWidget",
+    "PySide6_uibcdf.QtWidgets.QWidget.previousInFocusChain",
 }
 
 # end of file

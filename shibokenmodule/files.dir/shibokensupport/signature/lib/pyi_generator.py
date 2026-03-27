@@ -1,9 +1,7 @@
 LICENSE_TEXT = """
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-"""
-MYPY_TEXT = """
-# mypy: disable-error-code="override, overload-overlap"
+from __future__ import annotations
 """
 
 # flake8: noqa E:402
@@ -31,38 +29,6 @@ from shibokensupport.signature.lib.enum_sig import HintingEnumerator
 from shibokensupport.signature.lib.tool import build_brace_pattern
 
 indent = " " * 4
-
-TYPE_MAP = {
-    # Qt integer types
-    "qint64": "int",
-    "qint32": "int",
-    "qint16": "int",
-    "qsizetype": "int",
-    "quint32": "int",
-    "quint64": "int",
-    "size_t": "int",
-    "uint": "int",
-    "ushort": "int",
-    "ulong": "int",
-    "unsigned char": "int",
-    "unsigned int": "int",
-
-    # Qt floating types
-    "qreal": "float",
-
-    # Qt string-like
-    "QString": "str",
-    "QStringList": "typing.List[str]",
-    "QChar": "str",
-
-    # Qt containers (minimal)
-    "QList": "typing.List",
-    "QVariant": "typing.Any",
-
-    # C strings
-    "char*": "str",
-    "const char*": "str",
-}
 
 
 class Writer:
@@ -103,12 +69,12 @@ class Formatter(Writer):
     backup = inspect.formatannotation
 
     @classmethod
-    def formatannotation(cls, annotation, base_module=None, *args, **kwargs):
+    def formatannotation(cls, annotation, base_module=None):
         if getattr(annotation, '__module__', None) == 'typing':
             # do not remove the prefix!
             return repr(annotation)
         # do the normal action.
-        return cls.backup(annotation, base_module, *args, **kwargs)
+        return cls.backup(annotation, base_module)
 
     @classmethod
     def fix_typing_prefix(cls, signature):
@@ -117,29 +83,6 @@ class Formatter(Writer):
         stringized = str(signature)
         inspect.formatannotation = cls.backup
         return stringized
-
-    @classmethod
-    def normalize_type(cls, type_repr: str) -> str:
-        if not type_repr:
-            return "typing.Any"
-        if type_repr in {"void", "void*"}:
-            return "typing.Any"
-        if any(x in type_repr for x in ("QRhi", ".ComponentType", ".Semantic")):
-            return "int"
-        if ( " " in type_repr and
-            not any(x in type_repr for x in ("*", "::", "<", ">", "[", "]"))):
-            return "typing.Any"
-        if type_repr.startswith("QList["):
-            inner = type_repr[len("QList["):-1]
-            inner = cls.normalize_type(inner)
-            return f"typing.List[{inner}]"
-        if type_repr.startswith("QMap[") or type_repr.startswith("QHash["):
-            inner = type_repr[type_repr.find("[") + 1:-1]
-            key, value = map(str.strip, inner.split(",", 1))
-            key = cls.normalize_type(key)
-            value = cls.normalize_type(value)
-            return f"typing.Dict[{key}, {value}]"
-        return TYPE_MAP.get(type_repr, type_repr)
 
     # Adding a pattern to substitute "Union[T, NoneType]" by "Optional[T]"
     # I tried hard to replace typing.Optional by a simple override, but
@@ -271,7 +214,7 @@ class Formatter(Writer):
     def enum(self, class_name, enum_name, value):
         spaces = indent * self.level
         hexval = hex(value)
-        self.print(f"{spaces}{enum_name:25} = {hexval if value >= 0 else value}")
+        self.print(f"{spaces}{enum_name:25} = ...  # {hexval if value >= 0 else value}")
         yield
 
     @contextmanager
@@ -279,12 +222,7 @@ class Formatter(Writer):
         spaces = indent * self.level
         # PYSIDE-2903: Use a fully qualified name in the type comment.
         full_name = f"{type(attr_value).__module__}.{type(attr_value).__qualname__}"
-        if full_name == "builtins.getset_descriptor":
-            # PYSIDE-3034: Public variable types added to __doc__
-            type_repr = self.normalize_type(attr_value.__doc__)
-        else:
-            type_repr = full_name
-        self.print(f"{spaces}{attr_name:25} = ...  # type: {type_repr}")
+        self.print(f"{spaces}{attr_name:25} = ...  # type: {full_name}")
         yield
 
     @contextmanager
@@ -295,7 +233,7 @@ class Formatter(Writer):
 
 
 def find_imports(text):
-    return [imp for imp in PySide6.__all__ if f"PySide6.{imp}." in text]
+    return [imp for imp in PySide6_uibcdf.__all__ if f"PySide6_uibcdf.{imp}." in text]
 
 
 FROM_IMPORTS = [
@@ -304,8 +242,8 @@ FROM_IMPORTS = [
     (None, ["enum"]),
     (None, ["typing"]),
     (None, ["collections.abc"]),
-    ("PySide6.QtCore", ["PyClassProperty", "Signal", "SignalInstance"]),
-    ("shiboken6", ["Shiboken"]),
+    ("PySide6_uibcdf.QtCore", ["PyClassProperty", "Signal", "SignalInstance"]),
+    ("shiboken6_uibcdf", ["Shiboken"]),
     ]
 
 
@@ -373,15 +311,16 @@ def generate_pyi(import_name, outpath, options):
         """
         This file contains the exact signatures for all functions in module
         {import_name}, except for defaults which are replaced by "...".
+
+        # mypy: disable-error-code="override, overload-overlap"
         """
         '''))
-    fmt.print(MYPY_TEXT.strip())
     HintingEnumerator(fmt).module(import_name)
     fmt.print("# eof")
     # Postprocess: resolve the imports
     if options._pyside_call:
-        global PySide6
-        import PySide6
+        global PySide6_uibcdf
+        import PySide6_uibcdf
     with outfilepath.open("w") as realfile:
         wr = Writer(realfile)
         outfile.seek(0)
@@ -395,7 +334,7 @@ def generate_pyi(import_name, outpath, options):
                 text = outfile.getvalue()
                 wr.print("import " + import_name)
                 for mod_name in find_imports(text):
-                    imp = "PySide6." + mod_name
+                    imp = "PySide6_uibcdf." + mod_name
                     if imp != import_name:
                         wr.print("import " + imp)
                 wr.print()
@@ -412,9 +351,9 @@ def generate_pyi(import_name, outpath, options):
                 wr.print()
                 # We use it only in QtCore at the moment, but this
                 # could be extended to other modules. (must import QObject then)
-                if import_name == "PySide6.QtCore":
+                if import_name == "PySide6_uibcdf.QtCore":
                     wr.print("PlaceholderType = typing.TypeVar(\"PlaceholderType\", "
-                             "bound=PySide6.QtCore.QObject)")
+                             "bound=PySide6_uibcdf.QtCore.QObject)")
                 wr.print()
             else:
                 wr.print(line)

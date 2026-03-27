@@ -162,11 +162,6 @@ void deallocData(SbkObject *self, bool doCleanup);
 void _debugFormat(std::ostream &str, SbkObject *self);
 } // namespace Object
 
-inline PyTypeObject *pyType(SbkObject *sbo)
-{
-    return Py_TYPE(reinterpret_cast<PyObject *>(sbo));
-}
-
 } // namespace Shiboken
 
 #endif

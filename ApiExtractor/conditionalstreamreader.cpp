@@ -158,7 +158,24 @@ bool ConditionalStreamReader::conditionMatches() const
 
 void ConditionalStreamReader::setConditions(const QStringList &newConditions)
 {
-    m_conditions = newConditions;
+    m_conditions = newConditions + platformConditions();
+}
+
+QStringList ConditionalStreamReader::platformConditions()
+{
+    QStringList result;
+#if defined (Q_OS_UNIX)
+    result << "unix"_L1;
+#endif
+
+#if defined (Q_OS_LINUX)
+    result << "linux"_L1;
+#elif defined (Q_OS_MACOS)
+    result << "darwin"_L1;
+#elif defined (Q_OS_WINDOWS)
+    result << "windows"_L1;
+#endif
+    return result;
 }
 
 ConditionalStreamReader::ExtendedToken ConditionalStreamReader::readNextInternal()

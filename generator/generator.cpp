@@ -370,7 +370,7 @@ QString Generator::getFullTypeName(const AbstractMetaType &type)
         typeName = getFullTypeNameWithoutModifiers(type);
     else
         typeName = getFullTypeName(type.typeEntry());
-    return typeName + QString(type.indirections(), u'*');
+    return typeName + QString::fromLatin1("*").repeated(type.indirections());
 }
 
 QString Generator::getFullTypeName(const AbstractMetaClassCPtr &metaClass)

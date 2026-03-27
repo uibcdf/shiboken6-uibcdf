@@ -36,7 +36,6 @@ enum CodeSnipPosition {
     CodeSnipPositionEnd,
     CodeSnipPositionDeclaration,
     CodeSnipPositionPyOverride,
-    CodeSnipPositionWrapperDeclaration,
     CodeSnipPositionAny
 };
 

@@ -9,7 +9,6 @@
 #include "helper.h"
 #include "sbkfeature_base.h"
 #include "sbkmodule.h"
-#include "sbkpep.h"
 #include "sbkstaticstrings.h"
 #include "sbkstring.h"
 
@@ -48,9 +47,7 @@ struct std::hash<GraphNode> {
 namespace Shiboken
 {
 
-// Mapping of C++ address to wrapper. We use a multimap to allow for co-located
-// objects, which happens for example for the first field of a struct.
-using WrapperMap = std::unordered_multimap<const void *, SbkObject *>;
+using WrapperMap = std::unordered_map<const void *, SbkObject *>;
 
 template <class NodeType>
 class BaseGraph
@@ -177,9 +174,6 @@ struct BindingManager::BindingManagerPrivate {
     Graph classHierarchy;
     DestructorEntries deleteInMainThread;
 
-    WrapperMap::const_iterator findSbkObject(const void *cptr, SbkObject *wrapper) const;
-    WrapperMap::const_iterator findByType(const void *cptr, PyTypeObject *desiredType) const;
-
     bool releaseWrapper(void *cptr, SbkObject *wrapper, const int *bases = nullptr);
     bool releaseWrapperHelper(void *cptr, SbkObject *wrapper);
 
@@ -187,43 +181,14 @@ struct BindingManager::BindingManagerPrivate {
     void assignWrapperHelper(SbkObject *wrapper, const void *cptr);
 };
 
-// Find wrapper map entry by Python instance
-WrapperMap::const_iterator
-    BindingManager::BindingManagerPrivate::findSbkObject(const void *cptr,
-                                                         SbkObject *wrapper) const
-{
-    const auto end = wrapperMapper.cend();
-    auto it = wrapperMapper.find(cptr);
-    for (; it != end && it->first == cptr; ++it) {
-        if (it->second == wrapper)
-            return it;
-    }
-    return end;
-}
-
-// Find wrapper map entry by Python type
-WrapperMap::const_iterator
-    BindingManager::BindingManagerPrivate::findByType(const void *cptr,
-                                                      PyTypeObject *desiredType) const
-{
-    const auto end = wrapperMapper.cend();
-    auto it = wrapperMapper.find(cptr);
-    for (; it != end && it->first == cptr; ++it) {
-        auto *foundType = Py_TYPE(reinterpret_cast<PyObject *>(it->second));
-        if (foundType == desiredType || PyType_IsSubtype(foundType, desiredType) != 0)
-            return it;
-    }
-    return end;
-}
-
-bool BindingManager::BindingManagerPrivate::releaseWrapperHelper(void *cptr, SbkObject *wrapper)
+inline bool BindingManager::BindingManagerPrivate::releaseWrapperHelper(void *cptr, SbkObject *wrapper)
 {
     // The wrapper argument is checked to ensure that the correct wrapper is released.
     // Returns true if the correct wrapper is found and released.
     // If wrapper argument is NULL, no such check is performed.
-    const auto it = wrapper != nullptr ? findSbkObject(cptr, wrapper) : wrapperMapper.find(cptr);
-    if (it != wrapperMapper.cend()) {
-        wrapperMapper.erase(it);
+    auto iter = wrapperMapper.find(cptr);
+    if (iter != wrapperMapper.end() && (wrapper == nullptr || iter->second == wrapper)) {
+        wrapperMapper.erase(iter);
         return true;
     }
     return false;
@@ -246,8 +211,8 @@ bool BindingManager::BindingManagerPrivate::releaseWrapper(void *cptr, SbkObject
 inline void BindingManager::BindingManagerPrivate::assignWrapperHelper(SbkObject *wrapper,
                                                                        const void *cptr)
 {
-    const auto it = findSbkObject(cptr, wrapper);
-    if (it == wrapperMapper.cend())
+    auto iter = wrapperMapper.find(cptr);
+    if (iter == wrapperMapper.end())
         wrapperMapper.insert(std::make_pair(cptr, wrapper));
 }
 
@@ -299,21 +264,15 @@ BindingManager &BindingManager::instance() {
     return singleton;
 }
 
-bool BindingManager::hasWrapper(const void *cptr) const
+bool BindingManager::hasWrapper(const void *cptr)
 {
     std::lock_guard<std::recursive_mutex> guard(m_d->wrapperMapLock);
     return m_d->wrapperMapper.find(cptr) != m_d->wrapperMapper.end();
 }
 
-bool BindingManager::hasWrapper(const void *cptr, PyTypeObject *typeObject) const
-{
-    std::lock_guard<std::recursive_mutex> guard(m_d->wrapperMapLock);
-    return m_d->findByType(cptr, typeObject) != m_d->wrapperMapper.cend();
-}
-
 void BindingManager::registerWrapper(SbkObject *pyObj, void *cptr)
 {
-    auto *instanceType = Shiboken::pyType(pyObj);
+    auto *instanceType = Py_TYPE(pyObj);
     auto *d = PepType_SOTP(instanceType);
 
     if (!d)
@@ -326,9 +285,9 @@ void BindingManager::registerWrapper(SbkObject *pyObj, void *cptr)
 
 void BindingManager::releaseWrapper(SbkObject *sbkObj)
 {
-    auto *sbkType = Shiboken::pyType(sbkObj);
+    auto *sbkType = Py_TYPE(sbkObj);
     auto *d = PepType_SOTP(sbkType);
-    int numBases = ((d && d->is_multicpp) ? getNumberOfCppBaseClasses(sbkType) : 1);
+    int numBases = ((d && d->is_multicpp) ? getNumberOfCppBaseClasses(Py_TYPE(sbkObj)) : 1);
 
     void **cptrs = sbkObj->d->cptr;
     const int *mi_offsets = d != nullptr ? d->mi_offsets : nullptr;
@@ -351,7 +310,7 @@ void BindingManager::addToDeletionInMainThread(const DestructorEntry &e)
     m_d->deleteInMainThread.push_back(e);
 }
 
-SbkObject *BindingManager::retrieveWrapper(const void *cptr) const
+SbkObject *BindingManager::retrieveWrapper(const void *cptr)
 {
     std::lock_guard<std::recursive_mutex> guard(m_d->wrapperMapLock);
     auto iter = m_d->wrapperMapper.find(cptr);
@@ -360,60 +319,96 @@ SbkObject *BindingManager::retrieveWrapper(const void *cptr) const
     return iter->second;
 }
 
-SbkObject *BindingManager::retrieveWrapper(const void *cptr, PyTypeObject *typeObject) const
+PyObject *BindingManager::getOverride(const void *cptr,
+                                      PyObject *nameCache[],
+                                      const char *methodName)
 {
-    std::lock_guard<std::recursive_mutex> guard(m_d->wrapperMapLock);
-    const auto it = m_d->findByType(cptr, typeObject);
-    return it != m_d->wrapperMapper.cend() ? it->second : nullptr;
-}
-
-PyObject *BindingManager::getOverride(SbkObject *wrapper, PyObject *pyMethodName)
-{
-    auto *obWrapper = reinterpret_cast<PyObject *>(wrapper);
-
-    Shiboken::AutoDecRef method(PyObject_GetAttr(obWrapper, pyMethodName));
-    if (method.isNull())
+    SbkObject *wrapper = retrieveWrapper(cptr);
+    // The refcount can be 0 if the object is dieing and someone called
+    // a virtual method from the destructor
+    if (!wrapper || Py_REFCNT(reinterpret_cast<const PyObject *>(wrapper)) == 0)
         return nullptr;
+
+    // PYSIDE-1626: Touch the type to initiate switching early.
+    SbkObjectType_UpdateFeature(Py_TYPE(wrapper));
+
+    int flag = currentSelectId(Py_TYPE(wrapper));
+    int propFlag = isdigit(methodName[0]) ? methodName[0] - '0' : 0;
+    bool is_snake = flag & 0x01;
+    PyObject *pyMethodName = nameCache[is_snake];  // borrowed
+    if (pyMethodName == nullptr) {
+        if (propFlag)
+            methodName += 2;    // skip the propFlag and ':'
+        pyMethodName = Shiboken::String::getSnakeCaseName(methodName, is_snake);
+        nameCache[is_snake] = pyMethodName;
+    }
+
+    auto *obWrapper = reinterpret_cast<PyObject *>(wrapper);
+    auto *wrapper_dict = SbkObject_GetDict_NoRef(obWrapper);
+    if (PyObject *method = PyDict_GetItem(wrapper_dict, pyMethodName)) {
+        // Note: This special case was implemented for duck-punching, which happens
+        // in the instance dict. It does not work with properties.
+        Py_INCREF(method);
+        return method;
+    }
+
+    PyObject *method = PyObject_GetAttr(obWrapper, pyMethodName);
 
     PyObject *function = nullptr;
 
     // PYSIDE-1523: PyMethod_Check is not accepting compiled methods, we do this rather
     // crude check for them.
-    // PYSIDE-535: This macro is redefined in a compatible way in pep384
-    if (PyMethod_Check(method) != 0) {
-        if (PyMethod_Self(method) != obWrapper)
-            return nullptr;
-        function = PyMethod_Function(method);
-    } else if (isCompiledMethod(method)) {
-        Shiboken::AutoDecRef im_self(PyObject_GetAttr(method, PyName::im_self()));
-        // Not retaining a reference inline with what PyMethod_GET_SELF does.
-        if (im_self.object() != obWrapper)
-            return nullptr;
-        function = PyObject_GetAttr(method, PyName::im_func());
-        // Not retaining a reference inline with what PyMethod_GET_FUNCTION does.
-        Py_DECREF(function);
-    } else {
-        return nullptr;
-    }
-
-    PyObject *mro = Py_TYPE(obWrapper)->tp_mro;
-    bool defaultFound = false;
-    // The first class in the mro (index 0) is the class being checked and it should not be tested.
-    // The last class in the mro (size - 1) is the base Python object class which should not be tested also.
-    for (Py_ssize_t idx = 1, size = PyTuple_Size(mro); idx < size - 1; ++idx) {
-        auto *parent = reinterpret_cast<PyTypeObject *>(PyTuple_GetItem(mro, idx));
-        AutoDecRef parentDict(PepType_GetDict(parent));
-        if (parentDict) {
-            if (PyObject *defaultMethod = PyDict_GetItem(parentDict.object(), pyMethodName)) {
-                defaultFound = true;
-                if (function != defaultMethod)
-                    return function;
+    if (method) {
+        // PYSIDE-535: This macro is redefined in a compatible way in pep384
+        if (PyMethod_Check(method)) {
+            if (PyMethod_GET_SELF(method) == obWrapper) {
+                function = PyMethod_GET_FUNCTION(method);
+            } else {
+                Py_DECREF(method);
+                method = nullptr;
             }
+        } else if (isCompiledMethod(method)) {
+            PyObject *im_self = PyObject_GetAttr(method, PyName::im_self());
+            // Not retaining a reference inline with what PyMethod_GET_SELF does.
+            Py_DECREF(im_self);
+
+            if (im_self == obWrapper) {
+                function = PyObject_GetAttr(method, PyName::im_func());
+                // Not retaining a reference inline with what PyMethod_GET_FUNCTION does.
+                Py_DECREF(function);
+            } else {
+                Py_DECREF(method);
+                method = nullptr;
+            }
+        } else {
+            Py_DECREF(method);
+            method = nullptr;
         }
     }
-    // PYSIDE-2255: If no default method was found, use the method.
-    if (!defaultFound)
-        return function;
+
+    if (method != nullptr) {
+        PyObject *mro = Py_TYPE(wrapper)->tp_mro;
+
+        bool defaultFound = false;
+        // The first class in the mro (index 0) is the class being checked and it should not be tested.
+        // The last class in the mro (size - 1) is the base Python object class which should not be tested also.
+        for (Py_ssize_t idx = 1, size = PyTuple_Size(mro); idx < size - 1; ++idx) {
+            auto *parent = reinterpret_cast<PyTypeObject *>(PyTuple_GetItem(mro, idx));
+            AutoDecRef parentDict(PepType_GetDict(parent));
+            if (parentDict) {
+                if (PyObject *defaultMethod = PyDict_GetItem(parentDict.object(), pyMethodName)) {
+                    defaultFound = true;
+                    if (function != defaultMethod)
+                        return method;
+                }
+            }
+        }
+        // PYSIDE-2255: If no default method was found, use the method.
+        if (!defaultFound)
+            return method;
+        Py_DECREF(method);
+    }
+
     return nullptr;
 }
 
@@ -453,7 +448,7 @@ void BindingManager::visitAllPyObjects(ObjectVisitor visitor, void *data)
 {
     WrapperMap copy = m_d->wrapperMapper;
     for (const auto &p : copy) {
-        if (m_d->findSbkObject(p.first, p.second) != m_d->wrapperMapper.cend())
+        if (hasWrapper(p.first))
             visitor(p.second, data);
     }
 }
@@ -470,11 +465,11 @@ void BindingManager::dumpWrapperMap()
         << "WrapperMap size: " << wrapperMap.size() << " Types: "
         << m_d->classHierarchy.nodeSet().size() << '\n';
     for (auto it : wrapperMap) {
-        auto *ob = reinterpret_cast<PyObject *>(it.second);
+        const SbkObject *sbkObj = it.second;
         std::cerr << "key: " << it.first << ", value: "
-            << static_cast<const void *>(ob) << " ("
-            << PepType_GetFullyQualifiedNameStr(Py_TYPE(ob)) << ", refcnt: "
-            << Py_REFCNT(ob) << ")\n";
+            << static_cast<const void *>(sbkObj) << " ("
+            << (Py_TYPE(sbkObj))->tp_name << ", refcnt: "
+            << Py_REFCNT(reinterpret_cast<const PyObject *>(sbkObj)) << ")\n";
     }
     std::cerr << "-------------------------------\n";
 }
@@ -506,7 +501,7 @@ static bool _callInheritedInit(PyObject *self, PyObject *args, PyObject *kwds,
     /* No need to check the last one: it's gonna be skipped anyway.  */
     for ( ; idx + 1 < n; ++idx) {
         auto *lookType = reinterpret_cast<PyTypeObject *>(PyTuple_GetItem(mro, idx));
-        if (className == PepType_GetFullyQualifiedNameStr(lookType))
+        if (className == lookType->tp_name)
             break;
     }
     // We are now at the first non-Python class `QObject`.

@@ -120,7 +120,6 @@ public:
     int kind() const;
 
     QStringList qualifiedName() const;
-    QString qualifiedNameString() const;
 
     QString name() const;
     void setName(const QString &name);
@@ -212,6 +211,9 @@ public:
     TemplateTypeAliasModelItem findTemplateTypeAlias(QAnyStringView name) const;
     VariableModelItem findVariable(QAnyStringView name) const;
 
+    void addEnumsDeclaration(const QString &enumsDeclaration);
+    QStringList enumsDeclarations() const { return m_enumsDeclarations; }
+
     FunctionModelItem declaredFunction(const FunctionModelItem &item);
 
     bool isEmpty() const;
@@ -248,6 +250,9 @@ private:
     TemplateTypeAliasList m_templateTypeAliases;
     VariableList m_variables;
     FunctionList m_functions;
+
+private:
+    QStringList m_enumsDeclarations;
 };
 
 class _ClassModelItem: public _ScopeModelItem
@@ -559,17 +564,11 @@ public:
     TypeInfo type() const;
     void setType(const TypeInfo &type);
 
-    TypeCategory underlyingTypeCategory() const;
-
-    Access accessPolicy() const;
-    void setAccessPolicy(Access accessPolicy);
-
 #ifndef QT_NO_DEBUG_STREAM
     void formatDebug(QDebug &d) const override;
 #endif
 
 private:
-    Access m_accessPolicy = Access::Public;
     TypeInfo m_type;
 };
 

@@ -1225,9 +1225,7 @@ public:
     FlagsTypeEntryPtr m_flags;
     QString m_cppType;
     QString m_docFile;
-    std::weak_ptr<const EnumTypeEntry> m_aliasTypeEntry;
     TypeSystem::PythonEnumType m_pythonEnumType = TypeSystem::PythonEnumType::Unspecified;
-    EnumTypeEntry::AliasMode m_aliasMode = EnumTypeEntry::AliasMode::NoAlias;
 };
 
 EnumTypeEntry::EnumTypeEntry(const QString &entryName,
@@ -1330,30 +1328,6 @@ void EnumTypeEntry::setDocFile(const QString &df)
 {
     S_D(EnumTypeEntry);
     d->m_docFile = df;
-}
-
-EnumTypeEntry::AliasMode EnumTypeEntry::aliasMode() const
-{
-    S_D(const EnumTypeEntry);
-    return d->m_aliasMode;
-}
-
-void EnumTypeEntry::setAliasMode(AliasMode am)
-{
-    S_D(EnumTypeEntry);
-    d->m_aliasMode = am;
-}
-
-EnumTypeEntryCPtr EnumTypeEntry::aliasTypeEntry() const
-{
-    S_D(const EnumTypeEntry);
-    return d->m_aliasTypeEntry.lock();
-}
-
-void EnumTypeEntry::setAliasTypeEntry(const EnumTypeEntryCPtr &entry)
-{
-    S_D(EnumTypeEntry);
-    d->m_aliasTypeEntry = entry;
 }
 
 TypeEntry *EnumTypeEntry::clone() const
@@ -2180,7 +2154,6 @@ public:
     QString m_resetMethod;
     SmartPointerTypeEntry::Instantiations m_instantiations;
     TypeEntryCList m_excludedInstantiations;
-    CustomConversionPtr m_customConversion;
     TypeSystem::SmartPointerType m_smartPointerType;
 };
 
@@ -2331,24 +2304,6 @@ QString SmartPointerTypeEntry::getTargetName(const AbstractMetaType &metaType) c
             name.remove(0, colonPos + 2);
     }
     return fixSmartPointerName(name);
-}
-
-bool SmartPointerTypeEntry::hasCustomConversion() const
-{
-    S_D(const SmartPointerTypeEntry);
-    return bool(d->m_customConversion);
-}
-
-void SmartPointerTypeEntry::setCustomConversion(const CustomConversionPtr &customConversion)
-{
-    S_D(SmartPointerTypeEntry);
-    d->m_customConversion = customConversion;
-}
-
-CustomConversionPtr SmartPointerTypeEntry::customConversion() const
-{
-    S_D(const SmartPointerTypeEntry);
-    return d->m_customConversion;
 }
 
 // ----------------- NamespaceTypeEntry

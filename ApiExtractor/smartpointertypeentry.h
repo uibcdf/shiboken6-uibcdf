@@ -5,7 +5,6 @@
 #define SMARTPOINTERTYPEENTRY_H
 
 #include "complextypeentry.h"
-#include "customconversion_typedefs.h"
 
 class SmartPointerTypeEntryPrivate;
 
@@ -51,10 +50,6 @@ public:
     const TypeEntryCList &excludedInstantiations() const;
 
     QString getTargetName(const AbstractMetaType &metaType) const;
-
-    bool hasCustomConversion() const;
-    void setCustomConversion(const CustomConversionPtr &customConversion);
-    CustomConversionPtr customConversion() const;
 
 #ifndef QT_NO_DEBUG_STREAM
     void formatDebug(QDebug &d) const override;

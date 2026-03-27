@@ -17,9 +17,6 @@ init_paths()
 from sample import Derived, Point, ObjectType
 
 
-REF_COUNT_DELTA = 2 if sys.version_info >= (3, 14) else 1
-
-
 class TestAccessingCppFields(unittest.TestCase):
     '''Simple test case for accessing the exposed C++ class fields.'''
 
@@ -128,7 +125,7 @@ class TestAccessingCppFields(unittest.TestCase):
         refcount1 = sys.getrefcount(o1)
         d.objectTypeField = o1
         self.assertEqual(d.objectTypeField, o1)
-        self.assertEqual(sys.getrefcount(d.objectTypeField), refcount1 + REF_COUNT_DELTA)
+        self.assertEqual(sys.getrefcount(d.objectTypeField), refcount1 + 1)
 
         # attributing a new object to instance's field should decrease the previous
         # object's reference count
@@ -137,7 +134,7 @@ class TestAccessingCppFields(unittest.TestCase):
         d.objectTypeField = o2
         self.assertEqual(d.objectTypeField, o2)
         self.assertEqual(sys.getrefcount(o1), refcount1)
-        self.assertEqual(sys.getrefcount(d.objectTypeField), refcount2 + REF_COUNT_DELTA)
+        self.assertEqual(sys.getrefcount(d.objectTypeField), refcount2 + 1)
 
     @unittest.skipUnless(hasattr(sys, "getrefcount"), f"{sys.implementation.name} has no refcount")
     def testRefCountingOfReferredObjectAfterDeletingReferrer(self):

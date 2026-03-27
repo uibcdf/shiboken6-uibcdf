@@ -182,7 +182,7 @@ void CppGenerator::generateSmartPointerClass(TextStream &s,
     const QString &methodsDefinitions = md.toString();
     const QString &singleMethodDefinitions = smd.toString();
 
-    const QString className = cpythonBaseName(typeEntry);
+    const QString className = chopType(cpythonTypeName(typeEntry));
 
     // Write single method definitions
     s << singleMethodDefinitions;
@@ -210,7 +210,6 @@ void CppGenerator::generateSmartPointerClass(TextStream &s,
     writeTpTraverseFunction(s, metaClass);
     writeTpClearFunction(s, metaClass);
 
-    writeClassTypeFunction(s, metaClass);
     writeClassDefinition(s, metaClass, classContext);
 
     s << '\n';
@@ -232,15 +231,12 @@ void CppGenerator::generateSmartPointerClass(TextStream &s,
 void CppGenerator::writeSmartPointerConverterFunctions(TextStream &s,
                                                        const AbstractMetaType &smartPointerType) const
 {
-    auto smartPointerTypeEntry =
-        std::static_pointer_cast<const SmartPointerTypeEntry>(smartPointerType.typeEntry());
-
-    if (smartPointerTypeEntry->hasCustomConversion())
-        writePythonToCppConversionFunctions(s, smartPointerType);
-
     const auto baseClasses = findSmartPointeeBaseClasses(api(), smartPointerType);
     if (baseClasses.isEmpty())
         return;
+
+    auto smartPointerTypeEntry =
+        std::static_pointer_cast<const SmartPointerTypeEntry>(smartPointerType.typeEntry());
 
     // TODO: Missing conversion to smart pointer pointer type:
 
@@ -292,8 +288,6 @@ void CppGenerator::writeSmartPointerConverterInitialization(TextStream &s,
 
         writeAddPythonToCppConversion(s, targetConverter, toCpp, isConv);
     };
-
-    writeTemplateCustomConverterRegister(s, type);
 
     const auto classes = findSmartPointeeBaseClasses(api(), type);
     if (classes.isEmpty())

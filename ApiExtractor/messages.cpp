@@ -22,7 +22,6 @@
 #include <QtCore/qfile.h>
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/qstringlist.h>
-#include <QtCore/qsysinfo.h>
 #include <QtCore/qxmlstream.h>
 
 #include <algorithm>
@@ -172,7 +171,7 @@ static void msgFormatEnumType(Stream &str,
 {
     switch (enumItem->enumKind()) {
     case CEnum:
-        str << "Enum '" << enumItem->qualifiedNameString() << '\'';
+        str << "Enum '" << enumItem->qualifiedName().join(u"::"_s) << '\'';
         break;
     case AnonymousEnum: {
         const EnumeratorList &values = enumItem->enumerators();
@@ -195,7 +194,7 @@ static void msgFormatEnumType(Stream &str,
     }
         break;
     case EnumClass:
-        str << "Scoped enum '" << enumItem->qualifiedNameString() << '\'';
+        str << "Scoped enum '" << enumItem->qualifiedName().join(u"::"_s) << '\'';
         break;
     }
     if (!className.isEmpty())
@@ -716,13 +715,13 @@ QString msgXpathDocModificationError(const DocModificationList& mods,
 
 QString msgCannotOpenForReading(const QFile &f)
 {
-    return "Failed to open file '%1' for reading: %2"_L1
+    return QString::fromLatin1("Failed to open file '%1' for reading: %2")
            .arg(QDir::toNativeSeparators(f.fileName()), f.errorString());
 }
 
 QString msgCannotOpenForWriting(const QFile &f)
 {
-    return "Failed to open file '%1' for writing: %2"_L1
+    return QString::fromLatin1("Failed to open file '%1' for writing: %2")
            .arg(QDir::toNativeSeparators(f.fileName()), f.errorString());
 }
 
@@ -1022,7 +1021,7 @@ QString msgUnknownArrayPointerConversion(const QString &s)
 QString msgMissingProjectFileMarker(const QString &name, const QByteArray &startMarker)
 {
     return u"First line of project file \""_s + QDir::toNativeSeparators(name)
-        + u"\" must be the string \""_s + QLatin1StringView(startMarker) + u"\"."_s;
+        + u"\" must be the string \""_s + QString::fromLatin1(startMarker) + u"\"."_s;
 }
 
 QString msgInvalidLanguageLevel(const QString &l)
@@ -1102,7 +1101,6 @@ QString msgRemoveRedundantOverload(const AbstractMetaFunctionCPtr &func,
 QString msgCommandLineArguments(const QStringList &argv)
 {
     QString result = "Host platform: "_L1 + QLatin1StringView(QLibraryInfo::build())
-                     + "\nHost OS      : "_L1 + QSysInfo::prettyProductName()
                      + "\nCommand line:\n   "_L1;
     for (const QString &arg : argv) {
         result.append(u' ');

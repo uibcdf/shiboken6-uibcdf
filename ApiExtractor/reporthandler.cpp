@@ -206,13 +206,11 @@ void ReportHandler::addGeneralMessage(const QString &message)
     generalMessages.append(message);
 }
 
-static const char generalLogFile[] = "mjb_shiboken.log";
-
 void ReportHandler::writeGeneralLogFile(const QString &directory)
 {
     if (generalMessages.isEmpty())
         return;
-    QFile file(directory + u'/' + QLatin1StringView(generalLogFile));
+    QFile file(directory + "/mjb_shiboken.log"_L1);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qWarning(lcShiboken, "%s", qPrintable(msgCannotOpenForWriting(file)));
         return;
@@ -221,14 +219,4 @@ void ReportHandler::writeGeneralLogFile(const QString &directory)
         file.write(m.toUtf8());
         file.putChar('\n');
     }
-}
-
-void ReportHandler::dumpGeneralLogFile()
-{
-    std::fprintf(stdout, "\n--- %s  ---\n", generalLogFile);
-    for (const auto &m : std::as_const(generalMessages)) {
-        std::fputs(m.toUtf8().constData(), stdout);
-        std::fputc('\n', stdout);
-    }
-    std::fprintf(stdout, "--- End of %s ---\n\n", generalLogFile);
 }

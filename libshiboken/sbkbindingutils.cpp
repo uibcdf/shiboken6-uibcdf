@@ -4,9 +4,6 @@
 #include "sbkbindingutils.h"
 
 #include "autodecref.h"
-#include "sbkstring.h"
-#include "sbkpep.h"
-#include "sbkstaticstrings_p.h"
 
 #include <algorithm>
 
@@ -74,28 +71,6 @@ bool parseConstructorKeywordArguments(PyObject *kwds,
     }
     errInfo.reset(result.release());
     return true;
-}
-
-static bool isCompiledHelper()
-{
-    Shiboken::AutoDecRef globals(PepEval_GetFrameGlobals());
-    if (globals.isNull())
-        return false;
-
-    if (PyDict_GetItem(globals.object(), PyMagicName::compiled()) != nullptr)
-        return true;
-    globals.reset(nullptr);
-
-    // __compiled__ may not be set in initialization phases, check builtins
-    static PyObject *nuitkaDir = Shiboken::String::createStaticString("__nuitka_binary_exe");
-    Shiboken::AutoDecRef builtins(PepEval_GetFrameBuiltins());
-    return !builtins.isNull() && PyDict_GetItem(builtins.object(), nuitkaDir) != nullptr;
-}
-
-bool isCompiled()
-{
-    static const bool result = isCompiledHelper();
-    return result;
 }
 
 } // namespace Shiboken

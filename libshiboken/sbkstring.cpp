@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "sbkstring.h"
-#include "sbkpep.h"
 #include "sbkenum.h"
 #include "sbkstaticstrings_p.h"
 #include "autodecref.h"
-
-#include <cstring>
-#include <cctype>
 
 namespace Shiboken::String
 {
@@ -31,7 +27,7 @@ static PyObject *initPathLike()
     if (osmodule == nullptr
         || (PathLike = PyObject_GetAttrString(osmodule, "PathLike")) == nullptr) {
         PyErr_Print();
-        Py_FatalError("libshiboken: cannot import os.PathLike");
+        Py_FatalError("cannot import os.PathLike");
     }
     return PathLike;
 }
@@ -213,20 +209,20 @@ PyObject *getSnakeCaseName(const char *name, bool lower)
      * unchanged since that are the special OpenGL functions.
      */
     if (!lower
-        || std::strlen(name) < 3
-        || (name[0] == 'g' && name[1] == 'l' && std::isupper(name[2])))
+        || strlen(name) < 3
+        || (name[0] == 'g' && name[1] == 'l' && isupper(name[2])))
         return createStaticString(name);
 
     char new_name[200 + 1] = {};
     const char *p = name;
     char *q = new_name;
     for (; *p && q - new_name < 200; ++p, ++q) {
-        if (std::isupper(*p)) {
-            if (p != name && std::isupper(*(p - 1)))
+        if (isupper(*p)) {
+            if (p != name && isupper(*(p - 1)))
                 return createStaticString(name);
             *q = '_';
             ++q;
-            *q = std::tolower(*p);
+            *q = tolower(*p);
         }
         else {
             *q = *p;

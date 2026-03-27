@@ -19,7 +19,6 @@
 #include <QtCore/qdir.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qlibrary.h>
-#include <QtCore/qversionnumber.h>
 #include <QtCore/qscopeguard.h>
 #include <QtCore/qvariant.h>
 
@@ -86,19 +85,11 @@ OptionDescriptions CommonOptionsParser::optionDescriptions()
         {u"documentation-only"_s,
          u"Do not generates any code, just the documentation"_s},
         {u"compiler=<type>"_s,
-         u"Emulated compiler type (g++/gnu, msvc, clang). CMAKE_CXX_COMPILER_ID may be used."_s},
+         u"Emulated compiler type (g++, msvc, clang)"_s},
         {u"platform=<name>"_s,
-         u"Emulated platform (android, darwin, ios, linux, unix, windows)."
-          " CMAKE_SYSTEM_NAME may be used."_s},
-        {u"platform-version=<version>"_s,
-         u"Platform version"_s},
-        {u"arch=<name>"_s,
-         u"Emulated architecture (x86_64, arm64, i586)."
-          " CMAKE_SYSTEM_PROCESSOR may be used."_s},
+         u"Emulated platform (windows, darwin, unix)"_s},
         {u"compiler-path=<file>"_s,
          u"Path to the compiler for determining builtin include paths"_s},
-        {u"compiler-argument=<argument>"_s,
-         u"Add an argument for the compiler for determining builtin include paths"_s},
         {u"generator-set=<\"generator module\">"_s,
          u"generator-set to be used. e.g. qtdoc"_s},
         {u"diff"_s, u"Print a diff of wrapper files"_s},
@@ -194,40 +185,17 @@ bool CommonOptionsParser::handleOption(const QString &key, const QString &value,
         return true;
     }
     if (key == u"compiler") {
-        if (!clang::setCompiler(value)) {
-            qCWarning(lcShiboken, "Invalid compiler \"%s\" passed to --compiler, defaulting to host.",
-                      qPrintable(value));
-        }
+        if (!clang::setCompiler(value))
+            throw Exception(u"Invalid value \""_s + value + u"\" passed to --compiler"_s);
         return true;
     }
     if (key == u"compiler-path") {
         clang::setCompilerPath(value);
         return true;
     }
-    if (key == u"compiler-argument") {
-        clang::addCompilerArgument(value);
-        return true;
-    }
-
     if (key == u"platform") {
-        if (!clang::setPlatform(value)) {
-            qCWarning(lcShiboken, "Invalid value \"%s\" passed to --platform, defaulting to host.",
-                      qPrintable(value));
-        }
-        return true;
-    }
-
-    if (key == u"platform-version") {
-        if (!clang::setPlatformVersion(value))
-            throw Exception("Invalid value "_L1 + value + " passed to --platform-version."_L1);
-        return true;
-    }
-
-    if (key == u"arch") {
-        if (!clang::setArchitecture(value)) {
-            qCWarning(lcShiboken, "Invalid architecture \"%s\" passed to --arch  defaulting to host.",
-                      qPrintable(value));
-        }
+        if (!clang::setPlatform(value))
+            throw Exception(u"Invalid value \""_s + value + u"\" passed to --platform"_s);
         return true;
     }
 
@@ -468,7 +436,5 @@ int wmain(int argc, wchar_t *argv[])
         std::cerr << appName << " error: " << e.what() << '\n';
         ex = EXIT_FAILURE;
     }
-    if (ex != 0 && qEnvironmentVariableIsSet("COIN_UNIQUE_JOB_ID"))
-        ReportHandler::dumpGeneralLogFile();
     return ex;
 }

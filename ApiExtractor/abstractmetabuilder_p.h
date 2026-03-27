@@ -94,14 +94,10 @@ public:
     AbstractMetaClassPtr traverseNamespace(const FileModelItem &dom,
                                          const NamespaceModelItem &item);
     std::optional<AbstractMetaEnum> traverseEnum(const EnumModelItem &item,
-                                                 const AbstractMetaClassPtr &enclosing);
-    void traverseEnums(const ScopeModelItem &item, const AbstractMetaClassPtr &parent);
-    std::optional<AbstractMetaEnum>
-        createMetaEnum(const EnumModelItem &enumItem, const QString &qualifiedName,
-                       const TypeEntryPtr &typeEntry, const AbstractMetaClassPtr &enclosing);
-    std::optional<AbstractMetaEnum>
-        traverseTypedefedEnum(const FileModelItem &dom, const TypeDefModelItem &typeDefItem,
-                              const AbstractMetaClassPtr &enclosing);
+                                                 const AbstractMetaClassPtr &enclosing,
+                                                 const QSet<QString> &enumsDeclarations);
+    void traverseEnums(const ScopeModelItem &item, const AbstractMetaClassPtr &parent,
+                       const QStringList &enumsDeclarations);
     AbstractMetaFunctionList classFunctionList(const ScopeModelItem &scopeItem,
                                                AbstractMetaClass::Attributes *constructorAttributes,
                                                const AbstractMetaClassPtr &currentClass);

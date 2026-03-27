@@ -11,8 +11,8 @@ auto *pyType = reinterpret_cast<PyTypeObject *>(%2);
 if (Shiboken::ObjectType::checkType(pyType)) {
     auto *ptr = reinterpret_cast<void *>(%1);
     if (auto *wrapper = Shiboken::BindingManager::instance().retrieveWrapper(ptr)) {
+        Py_INCREF(wrapper);
         %PYARG_0 = reinterpret_cast<PyObject *>(wrapper);
-        Py_INCREF(%PYARG_0);
     } else {
         %PYARG_0 = Shiboken::Object::newObject(pyType, ptr, false, true);
     }
@@ -117,7 +117,7 @@ PyTuple_SetItem(version, 1, PyLong_FromLong(SHIBOKEN_MINOR_VERSION));
 PyTuple_SetItem(version, 2, PyLong_FromLong(SHIBOKEN_MICRO_VERSION));
 PyTuple_SetItem(version, 3, Shiboken::String::fromCString(SHIBOKEN_RELEASE_LEVEL));
 PyTuple_SetItem(version, 4, PyLong_FromLong(SHIBOKEN_SERIAL));
-PepModule_Add(module, "__version_info__", version);
+PyModule_AddObject(module, "__version_info__", version);
 PyModule_AddStringConstant(module, "__version__", SHIBOKEN_VERSION);
 VoidPtr::addVoidPtrToModule(module);
 Shiboken::initShibokenSupport(module);

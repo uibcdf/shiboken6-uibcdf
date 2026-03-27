@@ -160,11 +160,6 @@ QStringList _CodeModelItem::qualifiedName() const
     return q;
 }
 
-QString _CodeModelItem::qualifiedNameString() const
-{
-    return qualifiedName().join("::"_L1);
-}
-
 QString _CodeModelItem::name() const
 {
     return m_name;
@@ -458,6 +453,11 @@ FunctionModelItem _ScopeModelItem::declaredFunction(const FunctionModelItem &ite
 
 _ScopeModelItem::~_ScopeModelItem() = default;
 
+void _ScopeModelItem::addEnumsDeclaration(const QString &enumsDeclaration)
+{
+    m_enumsDeclarations << enumsDeclaration;
+}
+
 void _ScopeModelItem::addClass(const ClassModelItem &item)
 {
     m_classes.append(item);
@@ -520,13 +520,15 @@ void _ScopeModelItem::appendScope(const _ScopeModelItem &other)
     m_templateTypeAliases += other.m_templateTypeAliases;
     m_variables += other.m_variables;
     m_functions += other.m_functions;
+    m_enumsDeclarations += other.m_enumsDeclarations;
 }
 
 bool _ScopeModelItem::isEmpty() const
 {
     return m_classes.isEmpty() && m_enums.isEmpty()
         && m_typeDefs.isEmpty() && m_templateTypeAliases.isEmpty()
-        && m_variables.isEmpty() && m_functions.isEmpty();
+        && m_variables.isEmpty() && m_functions.isEmpty()
+        && m_enumsDeclarations.isEmpty();
 }
 
 /* This function removes MSVC export declarations of non-type template
@@ -1206,26 +1208,11 @@ void _TypeDefModelItem::setType(const TypeInfo &type)
     m_type = type;
 }
 
-TypeCategory _TypeDefModelItem::underlyingTypeCategory() const
-{
-    return m_type.typeCategory();
-}
-
-Access _TypeDefModelItem::accessPolicy() const
-{
-    return m_accessPolicy;
-}
-
-void _TypeDefModelItem::setAccessPolicy(Access accessPolicy)
-{
-    m_accessPolicy = accessPolicy;
-}
-
 #ifndef QT_NO_DEBUG_STREAM
 void _TypeDefModelItem::formatDebug(QDebug &d) const
 {
     _CodeModelItem::formatDebug(d);
-    d << ", " << m_accessPolicy << ", type=" << m_type;
+    d << ", type=" << m_type;
 }
 #endif // !QT_NO_DEBUG_STREAM
 

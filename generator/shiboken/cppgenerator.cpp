@@ -88,23 +88,6 @@ TextStream &operator<<(TextStream &str, const sbkUnusedVariableCast &c)
     return str;
 }
 
-struct retrieveWrapper
-{
-    explicit retrieveWrapper(const AbstractMetaClassCPtr &klass,
-                             QAnyStringView instanceName = "this")
-        : m_klass(klass), m_instanceName(instanceName) {}
-
-    const AbstractMetaClassCPtr m_klass;
-    const QAnyStringView m_instanceName;
-};
-
-TextStream &operator<<(TextStream &str, const retrieveWrapper &rw)
-{
-    str << "Shiboken::BindingManager::instance().retrieveWrapper(" << rw.m_instanceName
-        << ", " << CppGenerator::cpythonTypeName(rw.m_klass) << ')';
-    return str;
-}
-
 struct pyTypeGetSlot
 {
     explicit pyTypeGetSlot(QAnyStringView funcType, QAnyStringView typeObject,
@@ -353,6 +336,15 @@ static QString compilerOptionOptimize()
     return result;
 }
 
+QString CppGenerator::chopType(QString s)
+{
+    if (s.endsWith(u"_Type"))
+        s.chop(5);
+    else if (s.endsWith(u"_TypeF()"))
+        s.chop(8);
+    return s;
+}
+
 static bool isStdSetterName(const QString &setterName, const QString &propertyName)
 {
    return setterName.size() == propertyName.size() + 3
@@ -482,17 +474,10 @@ static QString BuildEnumFlagInfo(const AbstractMetaEnum &cppEnum)
 }
 
 static void writePyGetSetDefEntry(TextStream &s, const QString &name,
-                                  const QString &getFunc, const QString &setFunc, const QString &doc={})
+                                  const QString &getFunc, const QString &setFunc)
 {
-    s << "{\"" << mangleName(name) << "\", " << getFunc << ", "
-        << (setFunc.isEmpty() ? NULL_PTR : setFunc) << ", ";
-
-    if (doc.isEmpty())
-        s << "nullptr";
-    else
-        s << "\"" << doc << "\"";
-
-    s << ", nullptr},\n";
+    s << "{const_cast<char *>(\"" << mangleName(name) << "\"), " << getFunc << ", "
+        << (setFunc.isEmpty() ? NULL_PTR : setFunc) << ", nullptr, nullptr},\n";
 }
 
 static bool generateRichComparison(const GeneratorContext &c)
@@ -526,7 +511,7 @@ void CppGenerator::generateIncludes(TextStream &s, const GeneratorContext &class
                                "type_traits"}; // enum/underlying type
     // headers
     s << "// default includes\n";
-    s << "#include <shiboken.h>\n#include <sbkpep.h>\n#include <sbkpepbuffer.h>\n";
+    s << "#include <shiboken.h>\n";
     if (wrapperDiagnostics()) {
         s << "#include <helper.h>\n";
         cppIncludes << "iostream";
@@ -717,8 +702,6 @@ void CppGenerator::generateClass(TextStream &s,
 
     s  << '\n';
 
-    writeClassTypeFunction(s, classContext.metaClass());
-
     // class inject-code native/beginning
     if (!typeEntry->codeSnips().isEmpty()) {
         writeClassCodeSnips(s, typeEntry->codeSnips(),
@@ -829,7 +812,7 @@ void CppGenerator::generateClass(TextStream &s,
     const QString methodsDefinitions = md.toString();
     const QString singleMethodDefinitions = smd.toString();
 
-    const QString className = cpythonBaseName(metaClass);
+    const QString className = chopType(cpythonTypeName(metaClass));
 
     // Write single method definitions
     s << singleMethodDefinitions;
@@ -930,9 +913,8 @@ void CppGenerator::generateClass(TextStream &s,
                 const QString setter = canGenerateSetter
                     ? cpythonSetterFunctionName(metaField) : QString();
                 const auto names = metaField.definitionNames();
-                const QString doc = metaField.type().pythonSignature();
                 for (const auto &name : names)
-                    writePyGetSetDefEntry(s, name, getter, setter, doc);
+                    writePyGetSetDefEntry(s, name, getter, setter);
             }
         }
 
@@ -996,7 +978,7 @@ void CppGenerator::writeCacheResetNative(TextStream &s, const GeneratorContext &
 {
     s << "void " << classContext.wrapperName()
         << "::resetPyMethodCache()\n{\n" << indent
-        << "std::fill(m_PyMethodCache.begin(), m_PyMethodCache.end(), nullptr);\n"
+        << "std::fill_n(m_PyMethodCache, sizeof(m_PyMethodCache) / sizeof(m_PyMethodCache[0]), false);\n"
         << outdent << "}\n\n";
 }
 
@@ -1032,8 +1014,9 @@ void CppGenerator::writeDestructorNative(TextStream &s,
     if (wrapperDiagnostics())
         s << R"(std::cerr << __FUNCTION__ << ' ' << this << '\n';)" << '\n';
     // kill pyobject
-    s << "auto *wrapper = " << retrieveWrapper(classContext.metaClass())
-      << ";\nShiboken::Object::destroy(wrapper, this);\n" << outdent << "}\n";
+    s << R"(SbkObject *wrapper = Shiboken::BindingManager::instance().retrieveWrapper(this);
+Shiboken::Object::destroy(wrapper, this);
+)" << outdent << "}\n";
 }
 
 // Return type for error messages when getting invalid types from virtual
@@ -1079,8 +1062,8 @@ QString CppGenerator::getVirtualFunctionReturnTypeName(const AbstractMetaFunctio
     if (func->type().isPrimitive())
         return u'"' + func->type().name() + u'"';
 
-    return u"PepType_GetFullyQualifiedNameStr(Shiboken::SbkType< "_s
-        + typeEntry->qualifiedCppName() + u" >())"_s;
+    return u"Shiboken::SbkType< "_s
+        + typeEntry->qualifiedCppName() + u" >()->tp_name"_s;
 }
 
 void CppGenerator::writeVirtualMethodCppCall(TextStream &s,
@@ -1313,8 +1296,7 @@ void CppGenerator::writeVirtualMethodNative(TextStream &s,
     const QString funcName = func->isOperatorOverload()
         ? pythonOperatorFunctionName(func) : func->definitionNames().constFirst();
 
-    auto owner = func->ownerClass();
-    QString className = wrapperName(owner);
+    QString className = wrapperName(func->ownerClass());
     const Options options = Generator::SkipDefaultValues | Generator::OriginalTypeDescription;
     s << functionSignature(func, className, {}, options)
       << "\n{\n" << indent;
@@ -1356,8 +1338,7 @@ void CppGenerator::writeVirtualMethodNative(TextStream &s,
     s << "static PyObject *nameCache[2] = {};\n"
       << "Shiboken::GilState gil(false);\n"
       << "Shiboken::AutoDecRef " << PYTHON_OVERRIDE_VAR << "(Sbk_GetPyOverride("
-      << "this, " << CppGenerator::cpythonTypeName(owner) << ", gil, funcName, m_PyMethodCache["
-      << cacheIndex << "], nameCache));\n"
+      << "this, gil, funcName, &m_PyMethodCache[" << cacheIndex << "], nameCache));\n"
       << "if (pyOverride.isNull()) {\n" << indent;
     writeVirtualMethodCppCall(s, func, funcName, snips, lastArg, retType,
                               returnStatement.statement, false, true);
@@ -1371,6 +1352,7 @@ void CppGenerator::writeVirtualMethodNative(TextStream &s,
     if (!func->isVoid())
         s << "return ";
 
+    auto owner = func->ownerClass();
     const auto &reusedFuncs = getReusedOverridenFunctions(owner);
     auto rit = reusedFuncs.constFind(func);
     const bool canReuse = rit != reusedFuncs.cend();
@@ -1454,7 +1436,7 @@ void CppGenerator::writeVirtualMethodPythonOverride(TextStream &s,
 
     if (!snips.isEmpty()) {
         if (func->injectedCodeUsesPySelf())
-            s << "PyObject *pySelf = " << retrieveWrapper(func->ownerClass()) << ";\n";
+            s << "PyObject *pySelf = BindingManager::instance().retrieveWrapper(this);\n";
 
         const AbstractMetaArgument *lastArg = func->arguments().isEmpty()
                                             ? nullptr : &func->arguments().constLast();
@@ -1674,11 +1656,10 @@ void CppGenerator::writeMetaCast(TextStream &s,
     const QString qualifiedCppName = classContext.metaClass()->qualifiedCppName();
     s << "void *" << wrapperClassName << "::qt_metacast(const char *_clname)\n{\n"
         << indent << "if (_clname == nullptr)\n" << indent << "return {};\n" << outdent
-        << "if (SbkObject *pySelf = Shiboken::BindingManager::instance().retrieveWrapper(this)) {\n" << indent
-        << "auto *obSelf = reinterpret_cast<PyObject *>(pySelf);\n"
-        << "if (PySide::inherits(Py_TYPE(obSelf), _clname))\n"
+        << "SbkObject *pySelf = Shiboken::BindingManager::instance().retrieveWrapper(this);\n"
+        << "if (pySelf != nullptr && PySide::inherits(Py_TYPE(pySelf), _clname))\n"
         << indent << "return static_cast<void *>(const_cast< "
-        << wrapperClassName << " *>(this));\n" << outdent << outdent << "}\n"
+        << wrapperClassName << " *>(this));\n" << outdent
         << "return " << qualifiedCppName << "::qt_metacast(_clname);\n"
         << outdent << "}\n\n";
 }
@@ -1736,17 +1717,6 @@ void CppGenerator::writeEnumConverterFunctions(TextStream &s, const AbstractMeta
     writePythonToCppFunction(s, c.toString(), enumConverterPythonType, typeName);
 
     QString pyTypeCheck = u"PyObject_TypeCheck(pyIn, "_s + enumPythonType + u')';
-    switch (metaEnum.typeEntry()->aliasMode()) {
-    case EnumTypeEntry::NoAlias:
-        break;
-    case EnumTypeEntry::AliasSource:
-    case EnumTypeEntry::AliasTarget: {
-        const QString &aliasSourceType = cpythonTypeNameExt(metaEnum.typeEntry()->aliasTypeEntry());
-        pyTypeCheck += "\n    || PyObject_TypeCheck(pyIn, "_L1 + aliasSourceType + u')';
-    }
-        break;
-    }
-
     writeIsPythonConvertibleToCppFunction(s, enumConverterPythonType, typeName, pyTypeCheck);
 
     c.clear();
@@ -1754,9 +1724,9 @@ void CppGenerator::writeEnumConverterFunctions(TextStream &s, const AbstractMeta
     c << "using IntType = std::underlying_type_t<" << cppTypeName << ">;\n"
          "const auto castCppIn = IntType(*reinterpret_cast<const "
         << cppTypeName << " *>(cppIn));\n" << "return "
-        << "Shiboken::Enum::newItem(pyType, castCppIn);\n";
+        << "Shiboken::Enum::newItem(" << enumPythonType << ", castCppIn);\n";
     s << '\n';
-    writeCppToPythonFunction(s, c.toString(), typeName, enumConverterPythonType, true);
+    writeCppToPythonFunction(s, c.toString(), typeName, enumConverterPythonType);
     s << '\n';
 
     auto flags = enumType->flags();
@@ -1783,7 +1753,7 @@ static void writePointerToPythonConverter(TextStream &c,
                                           const QString &typeName,
                                           const QString &cpythonType)
 {
-    c << "auto *pyOut = reinterpret_cast<PyObject *>(" << retrieveWrapper(metaClass, "cppIn") << ");\n"
+    c << "auto *pyOut = reinterpret_cast<PyObject *>(Shiboken::BindingManager::instance().retrieveWrapper(cppIn));\n"
         << "if (pyOut) {\n" << indent
         << "Py_INCREF(pyOut);\nreturn pyOut;\n" << outdent
         << "}\n";
@@ -2131,24 +2101,6 @@ void CppGenerator::writeCustomConverterRegister(TextStream &s,
     }
 }
 
-void CppGenerator::writeTemplateCustomConverterRegister(TextStream &s,
-                                                        const AbstractMetaType &type,
-                                                        QString converter)
-{
-    auto customConversion = CustomConversion::getCustomConversion(type.typeEntry());
-    if (!customConversion || customConversion->targetToNativeConversions().isEmpty())
-        return;
-    if (converter.isEmpty())
-        converter = converterVar;
-    const QString typeName = fixedCppTypeName(type);
-    for (const auto &conv : customConversion->targetToNativeConversions()) {
-        const QString &sourceTypeName = conv.sourceTypeName();
-        QString toCpp = pythonToCppFunctionName(sourceTypeName, typeName);
-        QString isConv = convertibleToCppFunctionName(sourceTypeName, typeName);
-        writeAddPythonToCppConversion(s, converter, toCpp, isConv);
-    }
-}
-
 void CppGenerator::writeContainerConverterFunctions(TextStream &s,
                                                     const AbstractMetaType &containerType) const
 {
@@ -2363,8 +2315,12 @@ void CppGenerator::writeConstructorWrapper(TextStream &s, const OverloadData &ov
     // Python owns it and C++ wrapper is false.
     if (shouldGenerateCppWrapper(overloadData.referenceFunction()->ownerClass()))
         s << "Shiboken::Object::setHasCppWrapper(sbkSelf, true);\n";
-
-    s << "Shiboken::BindingManager::instance().registerWrapper(sbkSelf, cptr);\n";
+    // Need to check if a wrapper for same pointer is already registered
+    // Caused by bug PYSIDE-217, where deleted objects' wrappers are not released
+    s << "if (Shiboken::BindingManager::instance().hasWrapper(cptr)) {\n" << indent
+        << "Shiboken::BindingManager::instance().releaseWrapper("
+           "Shiboken::BindingManager::instance().retrieveWrapper(cptr));\n" << outdent
+        << "}\nShiboken::BindingManager::instance().registerWrapper(sbkSelf, cptr);\n";
 
     // Create metaObject and register signal/slot
     if (needsMetaObject) {
@@ -3433,17 +3389,15 @@ QString CppGenerator::convertibleToCppFunctionName(const TargetToNativeConversio
 }
 
 void CppGenerator::writeCppToPythonFunction(TextStream &s, const QString &code, const QString &sourceTypeName,
-                                            const QString &targetTypeName, bool withType) const
+                                            const QString &targetTypeName) const
 {
 
     QString prettyCode = code;
     const QString funcName = cppToPythonFunctionName(sourceTypeName, targetTypeName);
     processCodeSnip(prettyCode, funcName);
 
-    s << "static PyObject *" << funcName <<'(';
-    if (withType)
-        s << "PyTypeObject *pyType, ";
-    s << "const void *cppIn)\n{\n" << indent << prettyCode
+    s << "static PyObject *" << funcName
+        << "(const void *cppIn)\n{\n" << indent << prettyCode
         << ensureEndl << outdent << "}\n";
 }
 
@@ -3548,16 +3502,9 @@ void CppGenerator::writeIsPythonConvertibleToCppFunction(TextStream &s,
         if (!condition.contains(u"pyIn"))
             s << sbkUnusedVariableCast("pyIn");
     }
-
-    const bool useBrace = condition.contains(u'\n');
-    s << "if (" << condition << ')';
-    if (useBrace)
-        s<< " {";
-    s << '\n' << indent
-      << "return " << pythonToCppFuncName << ";\n" << outdent;
-    if (useBrace)
-        s<< "}\n";
-    s << "return {};\n" << outdent << "}\n";
+    s << "if (" << condition << ")\n" << indent
+        << "return " << pythonToCppFuncName << ";\n" << outdent
+        << "return {};\n" << outdent << "}\n";
 }
 
 void CppGenerator::writePythonToCppConversionFunctions(TextStream &s,
@@ -3615,7 +3562,14 @@ void CppGenerator::writePythonToCppConversionFunctions(TextStream &s,
     writePythonToCppFunction(s, code, sourceTypeName, targetTypeName);
 
     // Python to C++ convertible check function.
-    QString typeCheck = toNative.sourceTypeCheckFallback();
+    QString typeCheck = toNative.sourceTypeCheck();
+    if (typeCheck.isEmpty()) {
+        QString pyTypeName = toNative.sourceTypeName();
+        if (pyTypeName == u"Py_None" || pyTypeName == u"PyNone")
+            typeCheck = u"%in == Py_None"_s;
+        else if (pyTypeName == u"SbkObject")
+            typeCheck = u"Shiboken::Object::checkType(%in)"_s;
+    }
     if (typeCheck.isEmpty()) {
         if (!toNative.sourceType() || toNative.sourceType()->isPrimitive()) {
             QString m;
@@ -3626,47 +3580,33 @@ void CppGenerator::writePythonToCppConversionFunctions(TextStream &s,
         typeCheck = u"PyObject_TypeCheck(%in, "_s
                     + cpythonTypeNameExt(toNative.sourceType()) + u')';
     }
-    processTypeCheckCodeSnip(typeCheck, targetType->qualifiedCppName());
+    typeCheck.replace(u"%in"_s, u"pyIn"_s);
+    processCodeSnip(typeCheck, targetType->qualifiedCppName());
     writeIsPythonConvertibleToCppFunction(s, sourceTypeName, targetTypeName, typeCheck);
 }
 
-void CppGenerator::writePythonToCppConversionFunctions(TextStream &s,
-                                                       const AbstractMetaType &templateType) const
+void CppGenerator::writePythonToCppConversionFunctions(TextStream &s, const AbstractMetaType &containerType) const
 {
-    const auto customConversion = CustomConversion::getCustomConversion(templateType.typeEntry());
-    if (customConversion) {
-        const auto &conversions = customConversion->targetToNativeConversions();
-        for (const auto &conv : conversions)
-            writePythonToCppConversionFunction(s, templateType, conv);
-    }
+    Q_ASSERT(containerType.typeEntry()->isContainer());
+    const auto cte = std::static_pointer_cast<const ContainerTypeEntry>(containerType.typeEntry());
+    const auto customConversion = cte->customConversion();
+    for (const auto &conv : customConversion->targetToNativeConversions())
+        writePythonToCppConversionFunction(s, containerType, conv);
 }
 
 void CppGenerator::writePythonToCppConversionFunction(TextStream &s,
-                                                      const AbstractMetaType &templateType,
+                                                      const AbstractMetaType &containerType,
                                                       const TargetToNativeConversion &conv) const
 {
-    // Python to C++ convertible check function.
-    QString typeName = fixedCppTypeName(templateType);
-    // Check fallback is too broad for containers that need elements of same type
-    QString typeCheck = templateType.isContainer()
-        ? conv.sourceTypeCheck() : conv.sourceTypeCheckFallback();
-    if (typeCheck.isEmpty()) {
-        typeCheck = cpythonCheckFunction(templateType);
-        if (typeCheck.isEmpty())
-            typeCheck = u"false"_s;
-        else
-            typeCheck = typeCheck + u"pyIn)"_s;
-    }
-
     // Python to C++ conversion function.
-    QString cppTypeName = getFullTypeNameWithoutModifiers(templateType);
+    QString cppTypeName = getFullTypeNameWithoutModifiers(containerType);
     QString code = conv.conversion();
     const QString line = u"auto &cppOutRef = *reinterpret_cast<"_s
         + cppTypeName + u" *>(cppOut);"_s;
     CodeSnipAbstract::prependCode(&code, line);
-    for (qsizetype i = 0; i < templateType.instantiations().size(); ++i) {
-        const AbstractMetaType &type = templateType.instantiations().at(i);
-        QString instTypeName = getFullTypeName(type);
+    for (qsizetype i = 0; i < containerType.instantiations().size(); ++i) {
+        const AbstractMetaType &type = containerType.instantiations().at(i);
+        QString typeName = getFullTypeName(type);
         // Containers of opaque containers are not handled here.
         const auto generatorArg = GeneratorArgument::fromMetaType(type);
         if (generatorArg.indirections > 0 && !type.generateOpaqueContainer()) {
@@ -3680,19 +3620,23 @@ void CppGenerator::writePythonToCppConversionFunction(TextStream &s,
                 rightCode.replace(varName, u'*' + varName);
                 code.replace(pos, code.size() - pos, rightCode);
             }
-            instTypeName.append(" *"_L1);
+            typeName.append(u" *"_s);
         }
-        const QString var = "%OUTTYPE_"_L1 + QString::number(i);
-        code.replace(var, instTypeName);
-        typeCheck.replace(var, instTypeName);
+        code.replace(u"%OUTTYPE_"_s + QString::number(i), typeName);
     }
     code.replace(u"%OUTTYPE"_s, cppTypeName);
     code.replace(u"%in"_s, u"pyIn"_s);
     code.replace(u"%out"_s, u"cppOutRef"_s);
+    QString typeName = fixedCppTypeName(containerType);
     const QString &sourceTypeName = conv.sourceTypeName();
     writePythonToCppFunction(s, code, sourceTypeName, typeName);
 
-    processTypeCheckCodeSnip(typeCheck, typeName); // needs %OUTTYPE_[n]
+    // Python to C++ convertible check function.
+    QString typeCheck = cpythonCheckFunction(containerType);
+    if (typeCheck.isEmpty())
+        typeCheck = u"false"_s;
+    else
+        typeCheck = typeCheck + u"pyIn)"_s;
     writeIsPythonConvertibleToCppFunction(s, sourceTypeName, typeName, typeCheck);
     s << '\n';
 }
@@ -4479,7 +4423,8 @@ QString CppGenerator::writeContainerConverterInitialization(TextStream &s,
         s << '&' << targetTypeName << "_Type";
     }
 
-    s << ", " << cppToPythonFunctionName(fixedCppTypeName(type), targetTypeName) << ");\n";
+    const QString typeName = fixedCppTypeName(type);
+    s << ", " << cppToPythonFunctionName(typeName, targetTypeName) << ");\n";
 
     s << registerConverterName(cppSignature, converter);
     if (usePySideExtensions() && cppSignature.startsWith("const "_L1)
@@ -4488,7 +4433,12 @@ QString CppGenerator::writeContainerConverterInitialization(TextStream &s,
         s << registerConverterName(underlyingType, converter);
     }
 
-    writeTemplateCustomConverterRegister(s, type, converter);
+    for (const auto &conv : typeEntry->customConversion()->targetToNativeConversions()) {
+        const QString &sourceTypeName = conv.sourceTypeName();
+        QString toCpp = pythonToCppFunctionName(sourceTypeName, typeName);
+        QString isConv = convertibleToCppFunctionName(sourceTypeName, typeName);
+        writeAddPythonToCppConversion(s, converter, toCpp, isConv);
+    }
 
     auto typedefItPair = api.typedefTargetToName().equal_range(type.cppSignature());
     if (typedefItPair.first != typedefItPair.second) {
@@ -4620,17 +4570,6 @@ static QString docString(const AbstractMetaClassCPtr &metaClass)
     return it != docModifs.cend() ? it->code().trimmed() : QString{};
 }
 
-void CppGenerator::writeClassTypeFunction(TextStream &s,
-                                          const AbstractMetaClassCPtr &metaClass)
-{
-    const QString className = cpythonBaseName(metaClass);
-    const QString typePtr = u"_"_s + className + u"_Type"_s;
-    s << openExternC << "static PyTypeObject *" << typePtr << " = nullptr;\n"
-        << "static PyTypeObject *" << className << "_TypeF(void)\n"
-        << "{\n" << indent << "return " << typePtr << ";\n" << outdent << "}\n"
-        << closeExternC;
-}
-
 void CppGenerator::writeClassDefinition(TextStream &s,
                                         const AbstractMetaClassCPtr &metaClass,
                                         const GeneratorContext &classContext)
@@ -4639,7 +4578,7 @@ void CppGenerator::writeClassDefinition(TextStream &s,
     QString tp_dealloc;
     QString tp_hash;
     QString tp_call;
-    const QString className = cpythonBaseName(metaClass);
+    const QString className = chopType(cpythonTypeName(metaClass));
 
     bool onlyPrivCtor = !metaClass->hasNonPrivateConstructor();
 
@@ -4725,8 +4664,8 @@ void CppGenerator::writeClassDefinition(TextStream &s,
         s << '\n';
     }
 
-    s << "\n// Class Definition -----------------------------------------------\n"
-          << openExternC;
+    s << "// Class Definition -----------------------------------------------\n"
+         "extern \"C\" {\n";
 
     if (hasHashFunction(metaClass))
         tp_hash = u'&' + cpythonBaseName(metaClass) + u"_HashFunc"_s;
@@ -4735,7 +4674,12 @@ void CppGenerator::writeClassDefinition(TextStream &s,
     if (callOp && !callOp->isModifiedRemoved())
         tp_call = u'&' + cpythonFunctionName(callOp);
 
-    s << "\nstatic PyType_Slot " << className << "_slots[] = {\n" << indent
+    const QString typePtr = u"_"_s + className
+        + u"_Type"_s;
+    s << "static PyTypeObject *" << typePtr << " = nullptr;\n"
+        << "static PyTypeObject *" << className << "_TypeF(void)\n"
+        << "{\n" << indent << "return " << typePtr << ";\n" << outdent
+        << "}\n\nstatic PyType_Slot " << className << "_slots[] = {\n" << indent
         << "{Py_tp_base,        nullptr}, // inserted by introduceWrapperType\n"
         << pyTypeSlotEntry("Py_tp_dealloc", tp_dealloc)
       << pyTypeSlotEntry("Py_tp_repr", m_tpFuncs.value(REPR_FUNCTION))
@@ -4994,7 +4938,7 @@ QString CppGenerator::writeCopyFunction(TextStream &s,
                                         const GeneratorContext &context)
 {
     const auto &metaClass = context.metaClass();
-    const QString className = cpythonBaseName(metaClass);
+    const QString className = chopType(cpythonTypeName(metaClass));
     const QString funcName = className + u"__copy__"_s;
 
     // PYSIDE-3135 replace _Self by Self when the minimum Python version is 3.11
@@ -5074,7 +5018,27 @@ void CppGenerator::writeGetterFunction(TextStream &s,
         cppField = u"cppOut_local"_s;
     }
 
+    s << "PyObject *pyOut = {};\n";
     if (newWrapperSameObject) {
+        // Special case colocated field with same address (first field in a struct)
+        s << "if (reinterpret_cast<void *>("
+            << cppField << ") == reinterpret_cast<void *>("
+            << CPP_SELF_VAR << ")) {\n" << indent
+            << "pyOut = reinterpret_cast<PyObject *>(Shiboken::Object::findColocatedChild("
+            << "reinterpret_cast<SbkObject *>(self), "
+            << cpythonTypeNameExt(fieldType) << "));\n"
+            << "if (pyOut != nullptr) {\n" << indent
+            << "Py_IncRef(pyOut);\n"
+            << "return pyOut;\n"
+            << outdent << "}\n";
+        // Check if field wrapper has already been created.
+        s << outdent << "} else if (Shiboken::BindingManager::instance().hasWrapper("
+            << cppField << ")) {" << "\n" << indent
+            << "pyOut = reinterpret_cast<PyObject *>(Shiboken::BindingManager::instance().retrieveWrapper("
+            << cppField << "));" << "\n"
+            << "Py_IncRef(pyOut);" << "\n"
+            << "return pyOut;" << "\n"
+            << outdent << "}\n";
         // Create and register new wrapper. We force a pointer conversion also
         // for wrapped value types so that they refer to the struct member,
         // avoiding any trouble copying them. Add a parent relationship to
@@ -5083,23 +5047,15 @@ void CppGenerator::writeGetterFunction(TextStream &s,
         // unsolved issues when using temporary Python lists of structs
         // which can cause elements to be reported deleted in expressions like
         // "foo.list_of_structs[2].field".
-        s << "PyObject *pyOut = {};\n"
-            << "auto *fieldTypeObject = " << cpythonTypeNameExt(fieldType) << ";\n"
-            << "if (auto *sbkOut = Shiboken::BindingManager::instance().retrieveWrapper("
-            << cppField << ", fieldTypeObject)) {\n" << indent
-            << "pyOut = reinterpret_cast<PyObject *>(sbkOut);\n"
-            << "Py_INCREF(pyOut);\n" << outdent << "} else {\n" << indent
-            << "pyOut = Shiboken::Object::newObject(fieldTypeObject, "
-            << cppField << ", false, true);\n"
-            << "Shiboken::Object::setParent(self, pyOut);\n"
-            << outdent << "}\n"
-            << "return pyOut;\n";
+        s << "pyOut = "
+            << "Shiboken::Object::newObject(" << cpythonTypeNameExt(fieldType)
+            << ", " << cppField << ", false, true);\n"
+            << "Shiboken::Object::setParent(self, pyOut)";
     } else {
-        s << "return ";
+        s << "pyOut = ";
         writeToPythonConversion(s, fieldType, metaField.enclosingClass(), cppField);
-        s << ";\n";
     }
-    s << outdent << "}\n";
+    s << ";\nreturn pyOut;\n" << outdent << "}\n";
 }
 
 // Write a getter for QPropertySpec
@@ -5492,14 +5448,14 @@ void CppGenerator::writeSignatureInfo(TextStream &s, const OverloadData &overloa
     }
 }
 
-void CppGenerator::writeEnumsInitialization(TextStream &s, const AbstractMetaEnumList &enums)
+void CppGenerator::writeEnumsInitialization(TextStream &s, AbstractMetaEnumList &enums)
 {
     if (enums.isEmpty())
         return;
     bool preambleWritten = false;
     bool etypeUsed = false;
 
-    for (const AbstractMetaEnum &cppEnum : enums) {
+    for (const AbstractMetaEnum &cppEnum : std::as_const(enums)) {
         if (cppEnum.isPrivate())
             continue;
         if (!preambleWritten) {
@@ -5513,14 +5469,6 @@ void CppGenerator::writeEnumsInitialization(TextStream &s, const AbstractMetaEnu
     }
     if (preambleWritten && !etypeUsed)
         s << sbkUnusedVariableCast("EType");
-}
-
-void CppGenerator::writeEnumsInitFunc(TextStream &s, const QString &funcName,
-                                      const AbstractMetaEnumList &enums)
-{
-     s << "static void " << funcName << "(PyObject *module)\n{\n" << indent;
-     writeEnumsInitialization(s, enums);
-     s << outdent << "}\n\n";
 }
 
 static qsizetype maxLineLength(const QStringList &list)
@@ -5635,7 +5583,7 @@ bool CppGenerator::writeEnumInitialization(TextStream &s, const AbstractMetaEnum
                     << indent << (isSigned ? "PyLong_FromLongLong" : "PyLong_FromUnsignedLongLong")
                     << "(" << pyValue << "));\n" << outdent;
             } else {
-                s << "PepModule_Add(module, \"" << mangledName << "\",\n" << indent
+                s << "PyModule_AddObject(module, \"" << mangledName << "\",\n" << indent
                     << (isSigned ? "PyLong_FromLongLong" : "PyLong_FromUnsignedLongLong") << "("
                     << pyValue << "));\n" << outdent;
             }
@@ -5864,7 +5812,7 @@ void CppGenerator::writeClassRegister(TextStream &s,
     AbstractMetaClassCPtr enc = metaClass->targetLangEnclosingClass();
     QString enclosingObjectVariable = enc ? u"enclosingClass"_s : u"module"_s;
 
-    QString pyTypePrefix = cpythonBaseName(metaClass);
+    QString pyTypeName = cpythonTypeName(metaClass);
     QString initFunctionName = getInitFunctionName(classContext);
 
     // PYSIDE-510: Create a signatures string for the introspection feature.
@@ -5879,7 +5827,7 @@ void CppGenerator::writeClassRegister(TextStream &s,
         << "return " << globalTypeVarExpr << ";\n\n" << outdent;
 
     // Multiple inheritance
-    QString pyTypeBasesVariable = pyTypePrefix + u"_Type_bases"_s;
+    QString pyTypeBasesVariable = chopType(pyTypeName) + u"_Type_bases"_s;
     const QStringList pyBases = pyBaseTypes(metaClass);
     s << "Shiboken::AutoDecRef " << pyTypeBasesVariable << "(PyTuple_Pack("
         << pyBases.size() << ",\n" << indent;
@@ -5891,7 +5839,8 @@ void CppGenerator::writeClassRegister(TextStream &s,
     s << "));\n\n" << outdent;
 
     // Create type and insert it in the module or enclosing class.
-    const QString typePtr = u"_"_s + pyTypePrefix + u"_Type"_s;
+    const QString typePtr = u"_"_s + chopType(pyTypeName)
+        + u"_Type"_s;
 
     s << typePtr << " = Shiboken::ObjectType::introduceWrapperType(\n" << indent;
     // 1:enclosingObject
@@ -5912,7 +5861,7 @@ void CppGenerator::writeClassRegister(TextStream &s,
 
     s << "\",\n";
     // 4:typeSpec
-    s << '&' << pyTypePrefix << "_spec,\n";
+    s << '&' << chopType(pyTypeName) << "_spec,\n";
 
     // 5:cppObjDtor
     QString dtorClassName = destructorClassName(metaClass, classContext);
@@ -5938,7 +5887,7 @@ void CppGenerator::writeClassRegister(TextStream &s,
     else
         s << wrapperFlags.join(" | ");
 
-    s << outdent << ");\nauto *pyType = " << typePtr << "; // references "
+    s << outdent << ");\nauto *pyType = " << pyTypeName << "; // references "
         << typePtr << "\n"
         << outdent << "#if PYSIDE6_COMOPT_COMPRESS == 0\n" << indent
         << "InitSignatureStrings(pyType, " << initFunctionName << "_SignatureStrings);\n"
@@ -5949,7 +5898,7 @@ void CppGenerator::writeClassRegister(TextStream &s,
 
     if (usePySideExtensions() && !classContext.forSmartPointer())
         s << "SbkObjectType_SetPropertyStrings(pyType, "
-            << pyTypePrefix << "_PropertyStrings);\n";
+                    << chopType(pyTypeName) << "_PropertyStrings);\n";
     s << globalTypeVarExpr << " = pyType;\n\n";
 
     // Register conversions for the type.
@@ -5995,7 +5944,7 @@ void CppGenerator::writeClassRegister(TextStream &s,
 
     if (!classContext.forSmartPointer() && !classEnums.isEmpty())
         s << "// Pass the ..._EnumFlagInfo to the class.\n"
-            << "SbkObjectType_SetEnumFlagInfo(pyType, " << pyTypePrefix
+            << "SbkObjectType_SetEnumFlagInfo(pyType, " << chopType(pyTypeName)
             << "_EnumFlagInfo);\n\n";
     writeEnumsInitialization(s, classEnums);
 
@@ -6038,8 +5987,8 @@ void CppGenerator::writeStaticFieldInitialization(TextStream &s,
     if (parts.size() < 4) {
         s << "\nPyTypeObject *" << getSimpleClassStaticFieldsInitFunctionName(metaClass)
             << "(PyObject *module)\n{\n" << indent
-            << "Shiboken::AutoDecRef obType(PyObject_GetAttrString(module, \"" << metaClass->name() << "\"));\n"
-            << "auto *type = reinterpret_cast<PyTypeObject *>(obType.object());\n"
+            << "auto *obType = PyObject_GetAttrString(module, \"" << metaClass->name() << "\");\n"
+            << "auto *type = reinterpret_cast<PyTypeObject *>(obType);\n"
             << "Shiboken::AutoDecRef dict(PepType_GetDict(type));\n";
     } else {
         s << "\nPyTypeObject *" << getSimpleClassStaticFieldsInitFunctionName(metaClass)
@@ -6415,11 +6364,12 @@ void CppGenerator::writeInitFuncCall(TextStream &callStr,
             : "module"_L1;
         callStr << functionName << '(' << enclosing << ");\n";
     } else if (hasParent) {
-        const QString &enclosingName = enclosingEntry->targetLangName();
-        const auto parts = QStringView{enclosingName}.split(u".", Qt::SkipEmptyParts);
+        const QString &enclosingName = enclosingEntry->name();
+        const auto parts = QStringView{enclosingName}.split(u"::", Qt::SkipEmptyParts);
+        const QString namePathPrefix = enclosingEntry->name().replace("::"_L1, "."_L1);
         callStr << "Shiboken::Module::AddTypeCreationFunction("
             << "module, \"" << parts[0] << "\", "
-            << functionName << ", \"" << enclosingName << '.' << pythonName << "\");\n";
+            << functionName << ", \"" << namePathPrefix << '.' << pythonName << "\");\n";
     } else {
         callStr << "Shiboken::Module::AddTypeCreationFunction("
             << "module, \"" << pythonName << "\", "
@@ -6435,40 +6385,9 @@ static void writeSubModuleHandling(TextStream &s, const QString &moduleName,
         << subModuleOf << "\"));\n"
         << "if (parentModule.isNull())\n" << indent
         << "return nullptr;\n" << outdent
-        << "if (PepModule_Add(parentModule.object(), \"" << moduleName
+        << "if (PyModule_AddObject(parentModule.object(), \"" << moduleName
         << "\", module) < 0)\n"
         << indent << "return nullptr;\n" << outdent << outdent << "}\n";
-}
-
-static QString writeModuleDef(TextStream &s, const QString &moduleName,
-                              const QString &execFunc)
-{
-    QString moduleDef = moduleName + "ModuleDef"_L1;
-    s << "static PyModuleDef_Slot " << moduleName << R"(ModuleSlots[] = {
-    {Py_mod_exec, reinterpret_cast<void *>()" << execFunc << R"()},
-#if !defined(PYPY_VERSION) && ((!defined(Py_LIMITED_API) && PY_VERSION_HEX >= 0x030C0000) || (defined(Py_LIMITED_API) && Py_LIMITED_API >= 0x030C0000))
-    {Py_mod_multiple_interpreters, Py_MOD_MULTIPLE_INTERPRETERS_NOT_SUPPORTED},
-#endif
-#ifdef Py_GIL_DISABLED
-    {Py_mod_gil, Py_MOD_GIL_USED},
-#endif
-    {0, nullptr}
-};
-
-static struct PyModuleDef )" << moduleDef << R"( = {
-    /* m_base     */ PyModuleDef_HEAD_INIT,
-    /* m_name     */ ")" << moduleName << R"(",
-    /* m_doc      */ nullptr,
-    /* m_size     */ 0,
-    /* m_methods  */ )" << moduleName << R"(Methods,
-    /* m_slots    */ )" << moduleName << R"(ModuleSlots,
-    /* m_traverse */ nullptr,
-    /* m_clear    */ nullptr,
-    /* m_free     */ nullptr
-};
-
-)";
-    return moduleDef;
 }
 
 bool CppGenerator::finishGeneration()
@@ -6570,9 +6489,8 @@ bool CppGenerator::finishGeneration()
 
     // write license comment
     s << licenseComment() << R"(
-#include <sbkpep.h>
+#include <sbkpython.h>
 #include <shiboken.h>
-#include <sbkbindingutils.h>
 #include <algorithm>
 #include <signature.h>
 )";
@@ -6626,6 +6544,8 @@ bool CppGenerator::finishGeneration()
        << "Shiboken::Module::TypeInitStruct *" << cppApiVariableName() << " = nullptr;\n"
        << "// Backwards compatible structure with identical indexing.\n"
        << "PyTypeObject **" << cppApiVariableNameOld() << " = nullptr;\n"
+       << "// Current module's PyObject pointer.\n"
+       << "PyObject *" << pythonModuleObjectName() << " = nullptr;\n"
        << "// Current module's converter array.\n"
        << "SbkConverter **" << convertersVariableName() << " = nullptr;\n\n";
 
@@ -6652,7 +6572,7 @@ bool CppGenerator::finishGeneration()
     s << "// Global functions "
         << "------------------------------------------------------------\n"
         << s_globalFunctionImpl.toString() << '\n'
-        << "static PyMethodDef " << moduleName() << "Methods[] = {\n" << indent
+        << "static PyMethodDef " << moduleName() << "_methods[] = {\n" << indent
         << s_globalFunctionDef.toString()
         << METHOD_DEF_SENTINEL << outdent << "};\n\n"
         << "// Classes initialization functions "
@@ -6712,7 +6632,7 @@ bool CppGenerator::finishGeneration()
         s << '\n';
     }
 
-    OpaqueContainerTypeHash opaqueContainers;
+    QHash<AbstractMetaType, OpaqueContainerData> opaqueContainers;
     const auto &containers = api().instantiatedContainers();
     QSet<AbstractMetaType> valueConverters;
     if (!containers.isEmpty()) {
@@ -6730,95 +6650,100 @@ bool CppGenerator::finishGeneration()
         s << '\n';
     }
 
-    const QString &modName =  moduleName();
+    s << "static struct PyModuleDef moduledef = {\n"
+        << "    /* m_base     */ PyModuleDef_HEAD_INIT,\n"
+        << "    /* m_name     */ \"" << moduleName() << "\",\n"
+        << "    /* m_doc      */ nullptr,\n"
+        << "    /* m_size     */ -1,\n"
+        << "    /* m_methods  */ " << moduleName() << "_methods,\n"
+        << "    /* m_reload   */ nullptr,\n"
+        << "    /* m_traverse */ nullptr,\n"
+        << "    /* m_clear    */ nullptr,\n"
+        << "    /* m_free     */ nullptr\n};\n\n";
 
     // PYSIDE-510: Create a signatures string for the introspection feature.
     writeSignatureStrings(s, signatureStream.toString(), moduleName(), "global functions");
 
     writeInitInheritance(s);
 
-    const QString convInitFunc = "initConverters_"_L1 + modName;
-    writeConverterInitFunc(s, convInitFunc, typeConversions, extendedConverters);
-    const QString containerConvInitFunc = "initContainerConverters_"_L1 + modName;
-    writeContainerConverterInitFunc(s, containerConvInitFunc, opaqueContainers);
-    QString opaqueContainerRegisterFunc;
-    if (!opaqueContainers.isEmpty()) {
-        opaqueContainerRegisterFunc = "registerOpaqueContainers_"_L1 + modName;
-        writeOpaqueContainerConverterRegisterFunc(s, opaqueContainerRegisterFunc,
-                                                  opaqueContainers);
+    // Write module init function
+    const QString globalModuleVar = pythonModuleObjectName();
+    s << "extern \"C\" LIBSHIBOKEN_EXPORT PyObject *PyInit_"
+        << moduleName() << "()\n{\n" << indent;
+    // Guard against repeated invocation
+    s << "if (" << globalModuleVar << " != nullptr)\n"
+        << indent << "return " << globalModuleVar << ";\n" << outdent;
+
+    // module inject-code target/beginning
+    writeModuleCodeSnips(s, snips, TypeSystem::CodeSnipPositionBeginning,
+                         TypeSystem::TargetLangCode);
+
+    for (const QString &requiredModule : requiredModules) {
+        s << "{\n" << indent
+             << "Shiboken::AutoDecRef requiredModule(Shiboken::Module::import(\"" << requiredModule << "\"));\n"
+             << "if (requiredModule.isNull())\n" << indent
+             << "return nullptr;\n" << outdent
+             << cppApiVariableName(requiredModule)
+             << " = Shiboken::Module::getTypes(requiredModule);\n"
+             << convertersVariableName(requiredModule)
+             << " = Shiboken::Module::getTypeConverters(requiredModule);\n" << outdent
+             << "}\n\n";
     }
-    QString enumRegisterFunc;
-    QString qtEnumRegisterMetaTypeFunc;
-    if (!globalEnums.isEmpty()) {
-        enumRegisterFunc = "registerEnums_"_L1 + modName;
-        writeEnumsInitFunc(s, enumRegisterFunc, globalEnums);
-        if (usePySideExtensions()) {
-            qtEnumRegisterMetaTypeFunc = "registerEnumMetaTypes_"_L1 + modName;
-            writeQtEnumRegisterMetaTypeFunction(s, qtEnumRegisterMetaTypeFunc, globalEnums);
-        }
+
+    int maxTypeIndex = getMaxTypeIndex() + api().instantiatedSmartPointers().size();
+    if (maxTypeIndex) {
+        s << "// Create an array of wrapper types/names for the current module.\n"
+            << "static Shiboken::Module::TypeInitStruct cppApi[] = {\n" << indent;
+
+        // Windows did not like an array of QString.
+        QStringList typeNames;
+        for (int idx = 0; idx < maxTypeIndex; ++idx)
+            typeNames.append("+++ unknown entry #"_L1 + QString::number(idx)
+                             + " in "_L1 + moduleName());
+
+        collectFullTypeNamesArray(typeNames);
+
+        for (const auto &typeName : typeNames)
+            s << "{nullptr, \"" << typeName << "\"},\n";
+
+        s << "{nullptr, nullptr}\n" << outdent << "};\n"
+            << "// The new global structure consisting of (type, name) pairs.\n"
+            << cppApiVariableName() << " = cppApi;\n";
+        if (usePySideExtensions())
+            s << "QT_WARNING_PUSH\nQT_WARNING_DISABLE_DEPRECATED\n";
+        s << "// The backward compatible alias with upper case indexes.\n"
+            << cppApiVariableNameOld() << " = reinterpret_cast<PyTypeObject **>(cppApi);\n";
+        if (usePySideExtensions())
+            s << "QT_WARNING_POP\n";
+        s << '\n';
     }
 
-    const QString execFunc = "exec_"_L1 + modName;
-    writeModuleExecFunction(s, execFunc, opaqueContainerRegisterFunc, enumRegisterFunc,
-                            s_classPythonDefines.toString(), classesWithStaticFields);
+    s << "// Create an array of primitive type converters for the current module.\n"
+        << "static SbkConverter *sbkConverters[SBK_" << moduleName()
+        << "_CONVERTERS_IDX_COUNT" << "];\n"
+        << convertersVariableName() << " = sbkConverters;\n\n"
+        << "PyObject *module = Shiboken::Module::create(\""  << moduleName()
+        << "\", &moduledef);\n\n"
+        << "// Make module available from global scope\n"
+        << globalModuleVar << " = module;\n\n";
 
-    const QString moduleDef = writeModuleDef(s, modName, execFunc);
+    const QString subModuleOf = typeDb->defaultTypeSystemType()->subModuleOf();
+    if (!subModuleOf.isEmpty())
+        writeSubModuleHandling(s,  moduleName(), subModuleOf);
 
-    writeModuleInitFunction(s, moduleDef, execFunc, convInitFunc, containerConvInitFunc, qtEnumRegisterMetaTypeFunc);
-
-    file.done();
-    return true;
-}
-
-void CppGenerator::writeConverterInitFunc(TextStream &s,
-                                          const QString &funcName,
-                                          const QList<CustomConversionPtr> &typeConversions,
-                                          const ExtendedConverterData &extendedConverters)
-{
-    s << "static void " << funcName << "()\n{\n" << indent;
+    s << "// Initialize classes in the type system\n"
+        << s_classPythonDefines.toString();
 
     if (!typeConversions.isEmpty()) {
-        s << "// Type conversions.\n";
+        s << '\n';
         for (const auto &conversion : typeConversions) {
             writePrimitiveConverterInitialization(s, conversion);
             s << '\n';
         }
     }
 
-    if (!extendedConverters.isEmpty()) {
-        s << '\n';
-        for (auto it = extendedConverters.cbegin(), end = extendedConverters.cend(); it != end; ++it) {
-            writeExtendedConverterInitialization(s, it.key(), it.value());
-            s << '\n';
-        }
-    }
-
-    const PrimitiveTypeEntryCList &primitiveTypeList = primitiveTypes();
-    if (!primitiveTypeList.isEmpty()) {
-        s << "// Register primitive types converters.\n";
-        for (const auto &pte : primitiveTypeList) {
-            if (!pte->generateCode() || !isCppPrimitive(pte))
-                continue;
-            if (!pte->referencesType())
-                continue;
-            TypeEntryCPtr referencedType = basicReferencedTypeEntry(pte);
-            s << registerConverterName(pte->qualifiedCppName(), converterObject(referencedType),
-                                       registerConverterName::Alias
-                                       | registerConverterName::PartiallyQualifiedAliases) << '\n';
-        }
-    }
-
-    s << outdent << "}\n\n";
-}
-
-void CppGenerator::writeContainerConverterInitFunc(TextStream &s,
-                                                   const QString &funcName,
-                                                   const OpaqueContainerTypeHash &opaqueContainers) const
-{
-    s << "static void " << funcName << "()\n{\n" << indent;
-
-    const auto &containers = api().instantiatedContainers();
     if (!containers.isEmpty()) {
+        s << '\n';
         for (const AbstractMetaType &container : containers) {
             const QString converterObj = writeContainerConverterInitialization(s, container, api());
             const auto it = opaqueContainers.constFind(container);
@@ -6831,157 +6756,49 @@ void CppGenerator::writeContainerConverterInitFunc(TextStream &s,
         }
     }
 
-    s << outdent << "}\n\n";
-}
+    if (!opaqueContainers.isEmpty()) {
+        s << "\n// Opaque container type registration\n"
+            << "PyObject *ob_type{};\n";
+        if (usePySideExtensions()) {
+            const bool hasQVariantConversion =
+                std::any_of(opaqueContainers.cbegin(), opaqueContainers.cend(),
+                            [](const OpaqueContainerData &d) { return d.hasQVariantConversion; });
+            if (hasQVariantConversion) {
+                const char qVariantConverterVar[] = "qVariantConverter";
+                s << "auto *" << qVariantConverterVar
+                  << " = Shiboken::Conversions::getConverter(\"QVariant\");\n"
+                  << "Q_ASSERT(" << qVariantConverterVar << " != nullptr);\n";
+            }
+        }
+        for (const auto &d : opaqueContainers)
+            s << d.registrationCode;
+        s << '\n';
+    }
 
-void CppGenerator::writeOpaqueContainerConverterRegisterFunc(TextStream &s, const QString &funcName,
-                                                             const OpaqueContainerTypeHash &opaqueContainers)
-{
-    s << "static void " << funcName << "(PyObject *module)\n{\n" << indent
-        << "PyTypeObject *pyType{};\n";
-    if (usePySideExtensions()) {
-        const bool hasQVariantConversion =
-            std::any_of(opaqueContainers.cbegin(), opaqueContainers.cend(),
-                        [](const OpaqueContainerData &d) { return d.hasQVariantConversion; });
-        if (hasQVariantConversion) {
-            const char qVariantConverterVar[] = "qVariantConverter";
-            s << "auto *" << qVariantConverterVar
-                << " = Shiboken::Conversions::getConverter(\"QVariant\");\n"
-                << "Q_ASSERT(" << qVariantConverterVar << " != nullptr);\n";
+    if (!extendedConverters.isEmpty()) {
+        s << '\n';
+        for (ExtendedConverterData::const_iterator it = extendedConverters.cbegin(), end = extendedConverters.cend(); it != end; ++it) {
+            writeExtendedConverterInitialization(s, it.key(), it.value());
+            s << '\n';
         }
     }
-    for (const auto &d : opaqueContainers)
-        s << d.registrationCode;
-    s << outdent << "}\n\n";
-}
 
-void CppGenerator::writeModuleInitFunction(TextStream &s, const QString &moduleDef,
-                                           const QString &execFunc, const QString &convInitFunc,
-                                           const QString &containerConvInitFunc,
-                                           const QString &qtEnumRegisterMetaTypeFunc)
-{
-     s << "extern \"C\" LIBSHIBOKEN_EXPORT PyObject *PyInit_"
-         << moduleName() << "()\n{\n" << indent
-         << "Shiboken::init();\n\n";
+    writeEnumsInitialization(s, globalEnums);
 
-     // Static initialization: Create converter/type arrays and retrieve arrays
-     // of the required modules for initializing the converters.
-     const int maxTypeIndex = getMaxTypeIndex() + api().instantiatedSmartPointers().size();
-     if (maxTypeIndex) {
-         s << "// Create an array of wrapper types/names for the current module.\n"
-             << "static Shiboken::Module::TypeInitStruct cppApi[] = {\n" << indent;
-
-         // Windows did not like an array of QString.
-         QStringList typeNames;
-         for (int idx = 0; idx < maxTypeIndex; ++idx)
-             typeNames.append("+++ unknown entry #"_L1 + QString::number(idx)
-                              + " in "_L1 + moduleName());
-
-         collectFullTypeNamesArray(typeNames);
-
-         for (const auto &typeName : typeNames)
-             s << "{nullptr, \"" << typeName << "\"},\n";
-
-         s << "{nullptr, nullptr}\n" << outdent << "};\n"
-             << "// The new global structure consisting of (type, name) pairs.\n"
-             << cppApiVariableName() << " = cppApi;\n";
-         if (usePySideExtensions())
-             s << "QT_WARNING_PUSH\nQT_WARNING_DISABLE_DEPRECATED\n";
-         s << "// The backward compatible alias with upper case indexes.\n"
-             << cppApiVariableNameOld() << " = reinterpret_cast<PyTypeObject **>(cppApi);\n";
-         if (usePySideExtensions())
-             s << "QT_WARNING_POP\n";
-         s << '\n';
-     }
-
-     s << "// Create an array of primitive type converters for the current module.\n"
-         << "static SbkConverter *sbkConverters[SBK_" << moduleName()
-         << "_CONVERTERS_IDX_COUNT" << "];\n"
-         << convertersVariableName() << " = sbkConverters;\n\n";
-
-     const TypeDatabase *typeDb = TypeDatabase::instance();
-     const CodeSnipList snips = typeDb->defaultTypeSystemType()->codeSnips();
-
-     writeModuleCodeSnips(s, snips, TypeSystem::CodeSnipPositionBeginning,
-                          TypeSystem::TargetLangCode);
-
-     const QStringList &requiredModules = typeDb->requiredTargetImports();
-     for (const QString &requiredModule : requiredModules) {
-         s << "{\n" << indent
-              << "Shiboken::AutoDecRef requiredModule(Shiboken::Module::import(\"" << requiredModule << "\"));\n"
-              << "if (requiredModule.isNull())\n" << indent
-              << "return nullptr;\n" << outdent
-              << cppApiVariableName(requiredModule)
-              << " = Shiboken::Module::getTypes(requiredModule);\n"
-              << convertersVariableName(requiredModule)
-              << " = Shiboken::Module::getTypeConverters(requiredModule);\n" << outdent
-              << "}\n\n";
-     }
-
-     s << convInitFunc << "();\n" << containerConvInitFunc << "();\n";
-     if (!qtEnumRegisterMetaTypeFunc.isEmpty())
-         s << qtEnumRegisterMetaTypeFunc << "();\n";
-     s << '\n';
-
-     // As of 8/25, Nuitka does not support multi-phase initialization. Fall back
-     s << "PyObject *module = nullptr;\n"
-         << "if (Shiboken::isCompiled()) {\n" << indent
-         << moduleDef << ".m_size = -1;\n"
-         << moduleDef << ".m_slots = nullptr;\n"
-         << "module = Shiboken::Module::createOnly(\""  << moduleName()
-         << "\", &" << moduleDef << ");\n"
-         << "if (module == nullptr)\n" << indent << "return nullptr;\n" << outdent
-         << "#ifdef Py_GIL_DISABLED\n"
-         << "PyUnstable_Module_SetGIL(module, Py_MOD_GIL_NOT_USED);\n"
-         << "#endif\n"
-         << "if (" << execFunc << "(module) != 0)\n" << indent << "return nullptr;\n" << outdent
-         << outdent << "} else {\n" << indent;
-      // Multi-phase initialization (exec() will be called by CPython).
-      s  << "module = PyModuleDef_Init(&" << moduleDef << ");\n" << outdent << "}\n"
-         << "return module;\n" << outdent << "}\n\n";
-}
-
-void CppGenerator::writeQtEnumRegisterMetaTypeFunction(TextStream &s,
-                                                       const QString &name,
-                                                       const AbstractMetaEnumList &globalEnums)
-{
-    s << "static void " << name << "()\n{\n" << indent;
-    for (const AbstractMetaEnum &metaEnum : globalEnums) {
-        if (!metaEnum.isAnonymous()) {
-            ConfigurableScope configScope(s, metaEnum.typeEntry());
-            s << "qRegisterMetaType< " << Generator::getFullTypeName(metaEnum.typeEntry())
-              << " >(\"" << metaEnum.name() << "\");\n";
-        }
+    s << "// Register primitive types converters.\n";
+    const PrimitiveTypeEntryCList &primitiveTypeList = primitiveTypes();
+    for (const auto &pte : primitiveTypeList) {
+        if (!pte->generateCode() || !isCppPrimitive(pte))
+            continue;
+        if (!pte->referencesType())
+            continue;
+        TypeEntryCPtr referencedType = basicReferencedTypeEntry(pte);
+        s << registerConverterName(pte->qualifiedCppName(), converterObject(referencedType),
+                                   registerConverterName::Alias
+                                   | registerConverterName::PartiallyQualifiedAliases);
     }
-    s << outdent << "}\n\n";
-}
 
-void CppGenerator::writeModuleExecFunction(TextStream &s, const QString &name,
-                                           const QString &opaqueContainerRegisterFunc,
-                                           const QString &enumRegisterFunc,
-                                           const QString &classPythonDefines,
-                                           const AbstractMetaClassCList &classesWithStaticFields)
-{
-    // Code to run in an module instance of a subinterpreter (Py_mod_exec)
-    s << "extern \"C\" {\nstatic int " << name << "(PyObject *module)\n{\n" << indent
-        << "Shiboken::Module::exec(module);\n\n";
-
-    // module inject-code target/beginning
-    const TypeDatabase *typeDb = TypeDatabase::instance();
-    const CodeSnipList snips = typeDb->defaultTypeSystemType()->codeSnips();
-
-    const QString subModuleOf = typeDb->defaultTypeSystemType()->subModuleOf();
-    if (!subModuleOf.isEmpty())
-        writeSubModuleHandling(s,  moduleName(), subModuleOf);
-
-    s << "// Initialize classes in the type system\n" << classPythonDefines << '\n';
-    if (!opaqueContainerRegisterFunc.isEmpty())
-        s << opaqueContainerRegisterFunc << "(module);\n";
-    if (!enumRegisterFunc.isEmpty())
-        s << enumRegisterFunc << "(module);\n";
     s << '\n';
-
-    const int maxTypeIndex = getMaxTypeIndex() + api().instantiatedSmartPointers().size();
     if (maxTypeIndex)
         s << "Shiboken::Module::registerTypes(module, " << cppApiVariableName() << ");\n";
     s << "Shiboken::Module::registerTypeConverters(module, " << convertersVariableName() << ");\n";
@@ -6999,7 +6816,7 @@ void CppGenerator::writeModuleExecFunction(TextStream &s, const QString &name,
     s << '\n' << initInheritanceFunction << "();\n"
         << "\nif (" << shibokenErrorsOccurred << ") {\n" << indent
         << "PyErr_Print();\n"
-        << "Py_FatalError(\"shiboken: can't initialize module " << moduleName() << "\");\n"
+        << "Py_FatalError(\"can't initialize module " << moduleName() << "\");\n"
         << outdent << "}\n";
 
     // module inject-code target/end
@@ -7008,17 +6825,29 @@ void CppGenerator::writeModuleExecFunction(TextStream &s, const QString &name,
     // module inject-code native/end
     writeModuleCodeSnips(s, snips, TypeSystem::CodeSnipPositionEnd, TypeSystem::NativeCode);
 
-    if (usePySideExtensions()) // cleanup staticMetaObject attribute
+    if (usePySideExtensions()) {
+        for (const AbstractMetaEnum &metaEnum : std::as_const(globalEnums))
+            if (!metaEnum.isAnonymous()) {
+                ConfigurableScope configScope(s, metaEnum.typeEntry());
+                s << "qRegisterMetaType< " << getFullTypeName(metaEnum.typeEntry())
+                  << " >(\"" << metaEnum.name() << "\");\n";
+            }
+
+        // cleanup staticMetaObject attribute
         s << "PySide::registerCleanupFunction(cleanTypesAttributes);\n\n";
+    }
 
     // finish the rest of get_signature() initialization.
     s << outdent << "#if PYSIDE6_COMOPT_COMPRESS == 0\n" << indent
         << "FinishSignatureInitialization(module, " << moduleName() << "_SignatureStrings);\n"
         << outdent << "#else\n" << indent
         << "if (FinishSignatureInitBytes(module, " << moduleName() << "_SignatureBytes, "
-        << moduleName() << "_SignatureByteSize) < 0)\n" << indent << "return -1;\n" << outdent
+        << moduleName() << "_SignatureByteSize) < 0)\n" << indent << "return {};\n" << outdent
         << outdent << "#endif\n" << indent
-        << "\nreturn 0;\n" << outdent << "}\n} // extern \"C\"\n\n";
+        << "\nreturn module;\n" << outdent << "}\n";
+
+    file.done();
+    return true;
 }
 
 static ArgumentOwner getArgumentOwner(const AbstractMetaFunctionCPtr &func, int argIndex)

@@ -341,8 +341,7 @@ ENUM_LOOKUP_BEGIN(TypeSystem::CodeSnipPosition, Qt::CaseInsensitive,
         {u"beginning", TypeSystem::CodeSnipPositionBeginning},
         {u"end", TypeSystem::CodeSnipPositionEnd},
         {u"declaration", TypeSystem::CodeSnipPositionDeclaration},
-        {u"override", TypeSystem::CodeSnipPositionPyOverride},
-        {u"wrapper-declaration", TypeSystem::CodeSnipPositionWrapperDeclaration}
+        {u"override", TypeSystem::CodeSnipPositionPyOverride}
     };
 ENUM_LOOKUP_LINEAR_SEARCH
 
@@ -1179,10 +1178,10 @@ bool TypeSystemParser::importFileElement(const QXmlStreamAttributes &atts)
         }
     }
     if (!foundFromOk || !foundToOk) {
-        QString fromError = "Could not find quote-after-line='%1' in file '%2'."_L1
-                            .arg(quoteFrom.toString(), fileName);
-        QString toError = "Could not find quote-before-line='%1' in file '%2'."_L1
-                          .arg(quoteTo.toString(), fileName);
+        QString fromError = QString::fromLatin1("Could not find quote-after-line='%1' in file '%2'.")
+                                                .arg(quoteFrom.toString(), fileName);
+        QString toError = QString::fromLatin1("Could not find quote-before-line='%1' in file '%2'.")
+                                              .arg(quoteTo.toString(), fileName);
 
         if (!foundToOk)
             m_error = toError;
@@ -2250,10 +2249,7 @@ TypeSystemTypeEntryPtr TypeSystemParser::parseRootElement(const ConditionalStrea
 
     if (m_defaultPackage.isEmpty()) { // Extending default, see addBuiltInContainerTypes()
         auto moduleEntry = std::const_pointer_cast<TypeSystemTypeEntry>(m_context->db->defaultTypeSystemType());
-        if (!moduleEntry) {
-            m_error = "No type system entry found (\"package\" attribute missing?)."_L1;
-            return {};
-        }
+        Q_ASSERT(moduleEntry);
         m_defaultPackage = moduleEntry->name();
         return moduleEntry;
     }
@@ -2351,10 +2347,9 @@ bool TypeSystemParser::parseCustomConversion(const ConditionalStreamReader &,
     if (topElement != StackElement::ModifyArgument
         && topElement != StackElement::ValueTypeEntry
         && topElement != StackElement::PrimitiveTypeEntry
-        && topElement != StackElement::ContainerTypeEntry
-        && topElement != StackElement::SmartPointerTypeEntry) {
+        && topElement != StackElement::ContainerTypeEntry) {
         m_error = u"Conversion rules can only be specified for argument modification, "
-                   "value-type, primitive-type, or container-type or smartpointer-type conversion."_s;
+                   "value-type, primitive-type or container-type conversion."_s;
         return false;
     }
 
@@ -2419,9 +2414,6 @@ bool TypeSystemParser::parseCustomConversion(const ConditionalStreamReader &,
         std::static_pointer_cast<ContainerTypeEntry>(top->entry)->setCustomConversion(customConversion);
     else if (top->entry->isValue())
         std::static_pointer_cast<ValueTypeEntry>(top->entry)->setCustomConversion(customConversion);
-    else if (top->entry->isSmartPointer())
-        std::static_pointer_cast<SmartPointerTypeEntry>(top->entry)->setCustomConversion(customConversion);
-
     customConversionsForReview.append(customConversion);
     return true;
 }
@@ -2487,7 +2479,7 @@ static bool parseIndex(const QString &index, int *result, QString *errorMessage)
     bool ok = false;
     *result = index.toInt(&ok);
     if (!ok)
-        *errorMessage = "Cannot convert '%1' to integer"_L1.arg(index);
+        *errorMessage = QString::fromLatin1("Cannot convert '%1' to integer").arg(index);
     return ok;
 }
 
@@ -2699,8 +2691,8 @@ bool TypeSystemParser::parseAddFunction(const ConditionalStreamReader &,
         || topElement == StackElement::Root
         || topElement ==  StackElement::ContainerTypeEntry;
     if (!validParent) {
-        m_error = "Add/Declare function requires a complex/container type or a root tag as parent, was=%1"_L1
-                  + tagFromElement(topElement);
+        m_error = QString::fromLatin1("Add/Declare function requires a complex/container type or a root tag as parent"
+                                      ", was=%1").arg(tagFromElement(topElement));
         return false;
     }
 
@@ -2831,8 +2823,8 @@ bool TypeSystemParser::parseProperty(const ConditionalStreamReader &, StackEleme
                                      QXmlStreamAttributes *attributes)
 {
     if (!isComplexTypeEntry(topElement)) {
-        m_error = "Add property requires a complex type as parent, was=%1"_L1
-                  + tagFromElement(topElement);
+        m_error = QString::fromLatin1("Add property requires a complex type as parent"
+                                      ", was=%1").arg(tagFromElement(topElement));
         return false;
     }
 
@@ -2930,8 +2922,8 @@ bool TypeSystemParser::parseModifyFunction(const ConditionalStreamReader &reader
         || topElement == StackElement::TypedefTypeEntry
         || topElement == StackElement::FunctionTypeEntry;
     if (!validParent) {
-        m_error = "Modify function requires complex type as parent, was=%1"_L1
-                  + tagFromElement(topElement);
+        m_error = QString::fromLatin1("Modify function requires complex type as parent"
+                                      ", was=%1").arg(tagFromElement(topElement));
         return false;
     }
 
@@ -3598,8 +3590,6 @@ bool TypeSystemParser::startElement(const ConditionalStreamReader &reader, Stack
         switch (element) {
         case StackElement::Root:
             top->entry = parseRootElement(reader, versionRange.since, &attributes);
-            if (!top->entry)
-                return false;
             break;
         case StackElement::LoadTypesystem:
             if (!loadTypesystem(reader, &attributes))

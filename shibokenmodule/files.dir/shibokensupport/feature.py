@@ -110,7 +110,7 @@ def feature_import(name, *args, **kwargs):
             pyside_feature_dict["rlcompleter"] = flag
 
         # Initialize feature (multiple times allowed) and clear cache.
-        sys.modules["PySide6.QtCore"].__init_feature__()
+        sys.modules["PySide6_uibcdf.QtCore"].__init_feature__()
         return sys.modules["__feature__"]
     # Redirect to the original import
     return None
@@ -123,7 +123,7 @@ def __init__():
     global _is_initialized
     if not _is_initialized:
         # use _one_ recursive import...
-        import PySide6.QtCore
+        import PySide6_uibcdf.QtCore
         # Initialize all prior imported modules
         for name, module in sys.modules.items():
             if name not in pyside_feature_dict:
@@ -151,7 +151,7 @@ def _mod_uses_pyside(module):
     """
     Find out if this module uses PySide.
 
-    Simple approach: Search the source code for the string "PySide6".
+    Simple approach: Search the source code for the string "PySide6_uibcdf".
     Maybe we later support source-less modules by inspecting all code objects.
     """
     try:
@@ -168,7 +168,7 @@ def _mod_uses_pyside(module):
         # This is undocumented and a Python error, seen in Python 3.10.2 on Windows,
         # importing `pythoncom` of the win32 package.
         return False
-    return "PySide6" in source
+    return "PySide6_uibcdf" in source
 
 
 def set_selection(select_id, mod_name=None):
@@ -183,7 +183,7 @@ def set_selection(select_id, mod_name=None):
     if isinstance(select_id, int):
         flag = select_id & 255
     pyside_feature_dict[mod_name] = flag
-    sys.modules["PySide6.QtCore"].__init_feature__()
+    sys.modules["PySide6_uibcdf.QtCore"].__init_feature__()
     return _current_selection(flag)
 
 

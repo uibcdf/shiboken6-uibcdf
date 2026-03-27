@@ -53,7 +53,7 @@ was much less appealing.
 Reason:
 If someone executes as the first PySide statement
 
-    from PySide6 import QtGui
+    from PySide6_uibcdf import QtGui
 
 then this import is already running. We can see the other imports like the
 diverse initializations and QtCore, because it is triggered by import of

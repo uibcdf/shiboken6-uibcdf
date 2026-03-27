@@ -187,9 +187,11 @@ static const char falseString[] = "False" ;
 
 PyObject *SbkVoidPtrObject_repr(PyObject *v)
 {
+
+
     auto *sbkObject = reinterpret_cast<SbkVoidPtrObject *>(v);
     PyObject *s = PyUnicode_FromFormat("%s(%p, %zd, %s)",
-                           Py_TYPE(v)->tp_name,
+                           Py_TYPE(sbkObject)->tp_name,
                            sbkObject->cptr,
                            sbkObject->size,
                            sbkObject->isWritable ? trueString : falseString);
@@ -201,7 +203,7 @@ PyObject *SbkVoidPtrObject_str(PyObject *v)
 {
     auto *sbkObject = reinterpret_cast<SbkVoidPtrObject *>(v);
     PyObject *s = PyUnicode_FromFormat("%s(Address %p, Size %zd, isWritable %s)",
-                           Py_TYPE(v)->tp_name,
+                           Py_TYPE(sbkObject)->tp_name,
                            sbkObject->cptr,
                            sbkObject->size,
                            sbkObject->isWritable ? trueString : falseString);
@@ -297,7 +299,7 @@ static int voidPointerInitialized = false;
 void init()
 {
     if (PyType_Ready(SbkVoidPtr_TypeF()) < 0)
-        Py_FatalError("libshiboken: Failed to initialize Shiboken.VoidPtr type.");
+        Py_FatalError("[libshiboken] Failed to initialize Shiboken.VoidPtr type.");
     else
         voidPointerInitialized = true;
 }
@@ -305,10 +307,9 @@ void init()
 void addVoidPtrToModule(PyObject *module)
 {
     if (voidPointerInitialized) {
-        auto *type = SbkVoidPtr_TypeF();
-        auto *obType = reinterpret_cast<PyObject *>(type);
-        Py_INCREF(obType);
-        PepModule_AddType(module, type);
+        Py_INCREF(SbkVoidPtr_TypeF());
+        PyModule_AddObject(module, PepType_GetNameStr(SbkVoidPtr_TypeF()),
+                           reinterpret_cast<PyObject *>(SbkVoidPtr_TypeF()));
     }
 }
 

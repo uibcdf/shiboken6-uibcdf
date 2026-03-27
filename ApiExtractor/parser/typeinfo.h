@@ -48,9 +48,6 @@ public:
 
     bool isVoid() const;
 
-    TypeCategory typeCategory() const;
-    void setTypeCategory(TypeCategory c);
-
     bool isConstant() const;
     void setConstant(bool is);
 

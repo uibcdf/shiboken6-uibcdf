@@ -21,7 +21,6 @@
 #include "voidptr.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <cstring>
 #include <iostream>
@@ -93,7 +92,7 @@ DestructorEntries getDestructorEntries(SbkObject *o)
 {
     DestructorEntries result;
     void **cptrs = o->d->cptr;
-    walkThroughBases(Shiboken::pyType(o), [&result, cptrs](PyTypeObject *node) {
+    walkThroughBases(Py_TYPE(o), [&result, cptrs](PyTypeObject *node) {
         auto *sotp = PepType_SOTP(node);
         auto index = result.size();
         result.push_back(DestructorEntry{sotp->cpp_dtor,
@@ -416,8 +415,12 @@ static void SbkDeallocWrapperCommon(PyObject *pyObj, bool canDelete)
         }
     }
 
+    PyObject *error_type{};
+    PyObject *error_value{};
+    PyObject *error_traceback{};
+
     /* Save the current exception, if any. */
-    Shiboken::Errors::Stash errorStash;
+    PyErr_Fetch(&error_type, &error_value, &error_traceback);
 
     if (canDelete) {
         if (sotp->is_multicpp) {
@@ -438,7 +441,7 @@ static void SbkDeallocWrapperCommon(PyObject *pyObj, bool canDelete)
     }
 
     /* Restore the saved exception. */
-    errorStash.restore();
+    PyErr_Restore(error_type, error_value, error_traceback);
 
     if (needTypeDecref)
         Py_DECREF(pyType);
@@ -451,7 +454,7 @@ static inline PyObject *_Sbk_NewVarObject(PyTypeObject *type)
 {
     // PYSIDE-1970: Support __slots__, implemented by PyVarObject
     auto const baseSize = sizeof(SbkObject);
-    auto varCount = Py_SIZE(reinterpret_cast<PyObject *>(type));
+    auto varCount = Py_SIZE(type);
     auto *self = PyObject_GC_NewVar(PyObject, type, varCount);
     if (varCount)
         std::memset(reinterpret_cast<char *>(self) + baseSize, 0, varCount * sizeof(void *));
@@ -536,10 +539,9 @@ PyObject *MakeQAppWrapper(PyTypeObject *type)
 
     // monitoring the last application state
     PyObject *qApp_curr = type != nullptr ? _Sbk_NewVarObject(type) : Py_None;
-    Shiboken::AutoDecRef builtins(PepEval_GetFrameBuiltins());
-    if (PyDict_SetItem(builtins.object(), Shiboken::PyName::qApp(), qApp_curr) < 0)
+    static PyObject *builtins = PyEval_GetBuiltins();
+    if (PyDict_SetItem(builtins, Shiboken::PyName::qApp(), qApp_curr) < 0)
         return nullptr;
-    builtins.reset(nullptr);
     qApp_last = qApp_curr;
     // Note: This Py_INCREF would normally be wrong because the qApp
     // object already has a reference from PyObject_GC_New. But this is
@@ -729,8 +731,7 @@ PyObject *FallbackRichCompare(PyObject *self, PyObject *other, int op)
 bool SbkObjectType_Check(PyTypeObject *type)
 {
     static auto *meta = SbkObjectType_TypeF();
-    auto *obType = reinterpret_cast<PyObject *>(type);
-    return Py_TYPE(obType) == meta || PyType_IsSubtype(Py_TYPE(obType), meta);
+    return Py_TYPE(type) == meta || PyType_IsSubtype(Py_TYPE(type), meta);
 }
 
 // Global functions from folding.
@@ -762,89 +763,28 @@ PyObject *Sbk_ReturnFromPython_Self(PyObject *self)
     return self;
 }
 
+// The virtual function call
+PyObject *Sbk_GetPyOverride(const void *voidThis, Shiboken::GilState &gil, const char *funcName,
+                            bool *resultCache, PyObject **nameCache)
+{
+    PyObject *pyOverride{};
+    if (!*resultCache) {
+        gil.acquire();
+        pyOverride = Shiboken::BindingManager::instance().getOverride(voidThis, nameCache, funcName);
+        if (pyOverride == nullptr) {
+            *resultCache = true;
+            gil.release();
+        } else if (Shiboken::Errors::occurred() != nullptr) {
+            // Give up.
+            Py_XDECREF(pyOverride);
+            pyOverride = nullptr;
+        }
+    }
+    return pyOverride;
+}
+
 } //extern "C"
 
-// Determine name of a Python override of a virtual method according to features
-// and populate name cache.
-static PyObject *overrideMethodName(PyObject *pySelf, const char *methodName,
-                                    PyObject **nameCache)
-{
-    // PYSIDE-1626: Touch the type to initiate switching early.
-    auto *obType = Py_TYPE(pySelf);
-    SbkObjectType_UpdateFeature(obType);
-
-    const int flag = currentSelectId(obType);
-    const int propFlag = isdigit(methodName[0]) ? methodName[0] - '0' : 0;
-    const bool is_snake = flag & 0x01;
-    PyObject *pyMethodName = nameCache[is_snake];  // borrowed
-    if (pyMethodName == nullptr) {
-        if (propFlag)
-            methodName += 2; // skip the propFlag and ':'
-        pyMethodName = Shiboken::String::getSnakeCaseName(methodName, is_snake);
-        nameCache[is_snake] = pyMethodName;
-    }
-    return pyMethodName;
-}
-
-// The virtual function call
-PyObject *Sbk_GetPyOverride(const void *voidThis, PyTypeObject *typeObject,
-                            Shiboken::GilState &gil, const char *funcName,
-                            PyObject *&resultCache, PyObject **nameCache)
-{
-    if (Py_IsInitialized() == 0 || resultCache == Py_None)
-        return nullptr; // Bail out, execute C++ call (wrappers may outlive Python).
-
-    auto &bindingManager = Shiboken::BindingManager::instance();
-    SbkObject *wrapper = bindingManager.retrieveWrapper(voidThis, typeObject);
-    // The refcount can be 0 if the object is dieing and someone called
-    // a virtual method from the destructor
-    if (wrapper == nullptr)
-        return nullptr;
-    auto *pySelf = reinterpret_cast<PyObject *>(wrapper);
-    if (Py_REFCNT(pySelf) == 0)
-        return nullptr;
-
-    gil.acquire();
-    if (resultCache == Py_None) { // PYSIDE 3246, some other thread may have determined the override
-        gil.release();
-        return nullptr;
-    }
-
-    if (resultCache != nullptr) // recreate the callable from function/self
-        return PepExt_Type_CallDescrGet(resultCache, pySelf, nullptr);
-
-    PyObject *pyMethodName = overrideMethodName(pySelf, funcName, nameCache);
-    auto *wrapper_dict = SbkObject_GetDict_NoRef(pySelf);
-
-    // Note: This special case was implemented for duck-punching, which happens
-    // in the instance dict. It does not work with properties.
-    // This is not cached to avoid leaking. FIXME PYSIDE 7: Remove (PYSIDE-2916)?
-    if (PyObject *method = PyDict_GetItem(wrapper_dict, pyMethodName)) {
-        Py_INCREF(method);
-        return method;
-    }
-
-    auto *pyOverride = Shiboken::BindingManager::getOverride(wrapper, pyMethodName);
-    if (pyOverride == nullptr) {
-        resultCache = Py_None;
-        Py_INCREF(resultCache);
-        gil.release();
-        return nullptr; // No override, execute C++ call
-    }
-
-    if (Shiboken::Errors::occurred() != nullptr) {
-        // Give up.
-        Py_XDECREF(pyOverride);
-        resultCache = Py_None;
-        Py_INCREF(resultCache);
-        gil.release();
-        return nullptr; // // Give up.
-    }
-
-    resultCache = pyOverride;
-    // recreate the callable from function/self
-    return PepExt_Type_CallDescrGet(resultCache, pySelf, nullptr);
-}
 
 namespace
 {
@@ -875,7 +815,7 @@ void _initMainThreadId(); // helper.cpp
 static std::string msgFailedToInitializeType(const char *description)
 {
     std::ostringstream stream;
-    stream << "libshiboken: Failed to initialize " << description;
+    stream << "[libshiboken] Failed to initialize " << description;
     if (auto *error = PepErr_GetRaisedException()) {
         if (auto *str = PyObject_Str(error))
             stream << ": " << Shiboken::String::toCString(str);
@@ -890,7 +830,7 @@ namespace Conversions { void init(); }
 void init()
 {
     static bool shibokenAlreadInitialised = false;
-    if (shibokenAlreadInitialised) // Leave guard in place until fully ported to multi phase init
+    if (shibokenAlreadInitialised)
         return;
 
     _initMainThreadId();
@@ -917,18 +857,17 @@ void init()
 // PYSIDE-1735: Initialize the whole Shiboken startup.
 void initShibokenSupport(PyObject *module)
 {
-    auto *type = SbkObject_TypeF();
-    auto *obType = reinterpret_cast<PyObject *>(type);
-    Py_INCREF(obType);
-    PepModule_AddType(module, type);
+    Py_INCREF(SbkObject_TypeF());
+    PyModule_AddObject(module, "Object", reinterpret_cast<PyObject *>(SbkObject_TypeF()));
 
     // PYSIDE-1735: When the initialization was moved into Shiboken import, this
     //              Py_INCREF became necessary. No idea why.
     Py_INCREF(module);
     init_shibokensupport_module();
 
+    auto *type = SbkObject_TypeF();
     if (InitSignatureStrings(type, SbkObject_SignatureStrings) < 0)
-        Py_FatalError("libshiboken: Error in initShibokenSupport");
+        Py_FatalError("Error in initShibokenSupport");
 }
 
 // setErrorAboutWrongArguments now gets overload info from the signature module.
@@ -1149,7 +1088,7 @@ introduceWrapperType(PyObject *enclosingObject,
 
     // PyModule_AddObject steals type's reference.
     Py_INCREF(ob_type);
-    if (PepModule_AddType(enclosingObject, type) != 0) {
+    if (PyModule_AddObject(enclosingObject, typeName, ob_type) != 0) {
         std::cerr << "Warning: " << __FUNCTION__ << " returns nullptr for "
             << typeName << '/' << originalName << " due to PyModule_AddObject(enclosingObject="
             << enclosingObject << ", ob_type=" << ob_type << ") failing\n";
@@ -1300,7 +1239,8 @@ void callCppDestructors(SbkObject *pyObj)
         DestroyQApplication();
         return;
     }
-    auto *sotp = PepType_SOTP(Shiboken::pyType(pyObj));
+    PyTypeObject *type = Py_TYPE(pyObj);
+    auto *sotp = PepType_SOTP(type);
     if (sotp->is_multicpp) {
         callDestructor(getDestructorEntries(pyObj));
     } else {
@@ -1357,8 +1297,7 @@ void getOwnership(PyObject *pyObj)
 void releaseOwnership(SbkObject *self)
 {
     // skip if the ownership have already moved to c++
-    auto *ob  = reinterpret_cast<PyObject *>(self);
-    auto *selfType = Py_TYPE(ob);
+    auto *selfType = Py_TYPE(self);
     if (!self->d->hasOwnership || Shiboken::Conversions::pythonTypeIsValueType(PepType_SOTP(selfType)->converter))
         return;
 
@@ -1367,7 +1306,7 @@ void releaseOwnership(SbkObject *self)
 
     // If We have control over object life
     if (self->d->containsCppWrapper)
-        Py_INCREF(ob); // keep the python object alive until the wrapper destructor call
+        Py_INCREF(reinterpret_cast<PyObject *>(self)); // keep the python object alive until the wrapper destructor call
     else
         invalidate(self); // If I do not know when this object will die We need to invalidate this to avoid use after
 }
@@ -1460,7 +1399,7 @@ void makeValid(SbkObject *self)
 
 void *cppPointer(SbkObject *pyObj, PyTypeObject *desiredType)
 {
-    PyTypeObject *pyType = Shiboken::pyType(pyObj);
+    PyTypeObject *pyType = Py_TYPE(pyObj);
     auto *sotp = PepType_SOTP(pyType);
     int idx = 0;
     if (sotp->is_multicpp)
@@ -1472,7 +1411,7 @@ void *cppPointer(SbkObject *pyObj, PyTypeObject *desiredType)
 
 std::vector<void *> cppPointers(SbkObject *pyObj)
 {
-    int n = getNumberOfCppBaseClasses(Shiboken::pyType(pyObj));
+    int n = getNumberOfCppBaseClasses(Py_TYPE(pyObj));
     std::vector<void *> ptrs(n);
     for (int i = 0; i < n; ++i)
         ptrs[i] = pyObj->d->cptr[i];
@@ -1482,7 +1421,7 @@ std::vector<void *> cppPointers(SbkObject *pyObj)
 
 bool setCppPointer(SbkObject *sbkObj, PyTypeObject *desiredType, void *cptr)
 {
-    PyTypeObject *type = Shiboken::pyType(sbkObj);
+    PyTypeObject *type = Py_TYPE(sbkObj);
     int idx = 0;
     if (PepType_SOTP(type)->is_multicpp)
         idx = getTypeIndexOnHierarchy(type, desiredType);
@@ -1500,12 +1439,11 @@ bool setCppPointer(SbkObject *sbkObj, PyTypeObject *desiredType, void *cptr)
 
 bool isValid(PyObject *pyObj)
 {
-    if (pyObj == nullptr || pyObj == Py_None || PyType_Check(pyObj) != 0)
+    if (!pyObj || pyObj == Py_None
+        || PyType_Check(pyObj) != 0
+        || Py_TYPE(Py_TYPE(pyObj)) != SbkObjectType_TypeF()) {
         return true;
-
-    PyTypeObject *type = Py_TYPE(pyObj);
-    if (Py_TYPE(reinterpret_cast<PyObject *>(type)) != SbkObjectType_TypeF())
-        return true;
+    }
 
     auto *priv = reinterpret_cast<SbkObject *>(pyObj)->d;
 
@@ -1530,18 +1468,17 @@ bool isValid(SbkObject *pyObj, bool throwPyError)
         return false;
 
     SbkObjectPrivate *priv = pyObj->d;
-    auto *ob = reinterpret_cast<PyObject *>(pyObj);
-    if (!priv->cppObjectCreated && isUserType(ob)) {
+    if (!priv->cppObjectCreated && isUserType(reinterpret_cast<PyObject *>(pyObj))) {
         if (throwPyError)
             PyErr_Format(PyExc_RuntimeError, "Base constructor of the object (%s) not called.",
-                         Py_TYPE(ob)->tp_name);
+                         Py_TYPE(pyObj)->tp_name);
         return false;
     }
 
     if (!priv->validCppObject) {
         if (throwPyError)
             PyErr_Format(PyExc_RuntimeError, "Internal C++ object (%s) already deleted.",
-                         (Py_TYPE(ob))->tp_name);
+                         (Py_TYPE(pyObj))->tp_name);
         return false;
     }
 
@@ -1561,7 +1498,7 @@ SbkObject *findColocatedChild(SbkObject *wrapper,
                               const PyTypeObject *instanceType)
 {
     // Degenerate case, wrapper is the correct wrapper.
-    if (reinterpret_cast<const void *>(Shiboken::pyType(wrapper)) == reinterpret_cast<const void *>(instanceType))
+    if (reinterpret_cast<const void *>(Py_TYPE(wrapper)) == reinterpret_cast<const void *>(instanceType))
         return wrapper;
 
     if (!(wrapper->d && wrapper->d->cptr))
@@ -1577,8 +1514,7 @@ SbkObject *findColocatedChild(SbkObject *wrapper,
         if (!(child->d && child->d->cptr))
             continue;
         if (child->d->cptr[0] == wrapper->d->cptr[0]) {
-            auto *childType = Shiboken::pyType(child);
-            return reinterpret_cast<const void *>(childType) == reinterpret_cast<const void *>(instanceType)
+            return reinterpret_cast<const void *>(Py_TYPE(child)) == reinterpret_cast<const void *>(instanceType)
                 ? child : findColocatedChild(child, instanceType);
         }
     }
@@ -1646,16 +1582,42 @@ PyObject *newObjectWithHeuristics(PyTypeObject *instanceType,
 
 PyObject *newObjectForType(PyTypeObject *instanceType, void *cptr, bool hasOwnership)
 {
+    bool shouldCreate = true;
+    bool shouldRegister = true;
+    SbkObject *self = nullptr;
+
     auto &bindingManager = BindingManager::instance();
-    SbkObject *self = bindingManager.retrieveWrapper(cptr, instanceType);
-    if (self != nullptr) {
-        Py_IncRef(reinterpret_cast<PyObject *>(self));
-    } else {
+    // Some logic to ensure that colocated child field does not overwrite the parent
+    if (SbkObject *existingWrapper = bindingManager.retrieveWrapper(cptr)) {
+        self = findColocatedChild(existingWrapper, instanceType);
+        if (self) {
+            // Wrapper already registered for cptr.
+            // This should not ideally happen, binding code should know when a wrapper
+            // already exists and retrieve it instead.
+            shouldRegister = shouldCreate = false;
+        } else if (hasOwnership &&
+                  (!(Shiboken::Object::hasCppWrapper(existingWrapper) ||
+                     Shiboken::Object::hasOwnership(existingWrapper)))) {
+            // Old wrapper is likely junk, since we have ownership and it doesn't.
+            bindingManager.releaseWrapper(existingWrapper);
+        } else {
+            // Old wrapper may be junk caused by some bug in identifying object deletion
+            // but it may not be junk when a colocated field is accessed for an
+            // object which was not created by python (returned from c++ factory function).
+            // Hence we cannot release the wrapper confidently so we do not register.
+            shouldRegister = false;
+        }
+    }
+
+    if (shouldCreate) {
         self = reinterpret_cast<SbkObject *>(SbkObject_tp_new(instanceType, nullptr, nullptr));
         self->d->cptr[0] = cptr;
         self->d->hasOwnership = hasOwnership;
         self->d->validCppObject = 1;
-        bindingManager.registerWrapper(self, cptr);
+        if (shouldRegister)
+            bindingManager.registerWrapper(self, cptr);
+    } else {
+        Py_IncRef(reinterpret_cast<PyObject *>(self));
     }
     return reinterpret_cast<PyObject *>(self);
 }
@@ -1773,14 +1735,8 @@ void setParent(PyObject *parent, PyObject *child)
             parent_->d->parentInfo = new ParentInfo;
 
         // do not re-add a child
-        if (child_->d->parentInfo && (child_->d->parentInfo->parent == parent_)) {
-            if (Shiboken::pyVerbose()) {
-                std::cerr << "Warning: Attempt to re-add child "
-                          << child << '/' << Py_TYPE(child)->tp_name << " to parent "
-                          << parent << '/' << Py_TYPE(parent)->tp_name << '\n';
-            }
+        if (child_->d->parentInfo && (child_->d->parentInfo->parent == parent_))
             return;
-        }
     }
 
     ParentInfo *pInfo = child_->d->parentInfo;
@@ -1803,7 +1759,7 @@ void setParent(PyObject *parent, PyObject *child)
         parent_->d->parentInfo->children.insert(child_);
 
         // Add Parent ref
-        Py_INCREF(child);
+        Py_INCREF(child_);
 
         // Remove ownership
         child_->d->hasOwnership = false;
@@ -1839,7 +1795,7 @@ void deallocData(SbkObject *self, bool cleanup)
 
 void setTypeUserData(SbkObject *wrapper, void *userData, DeleteUserDataFunc d_func)
 {
-    auto *type = Shiboken::pyType(wrapper);
+    auto *type = Py_TYPE(wrapper);
     auto *sotp = PepType_SOTP(type);
     if (sotp->user_data)
         sotp->d_func(sotp->user_data);
@@ -1850,7 +1806,7 @@ void setTypeUserData(SbkObject *wrapper, void *userData, DeleteUserDataFunc d_fu
 
 void *getTypeUserData(SbkObject *wrapper)
 {
-    auto *type = Shiboken::pyType(wrapper);
+    auto *type = Py_TYPE(wrapper);
     return PepType_SOTP(type)->user_data;
 }
 
@@ -1923,15 +1879,14 @@ void clearReferences(SbkObject *self)
 
 static std::vector<PyTypeObject *> getBases(SbkObject *self)
 {
-    auto *type = Shiboken::pyType(self);
-    return ObjectType::isUserType(type)
-        ? getCppBaseClasses(type)
-        : std::vector<PyTypeObject *>(1, type);
+    return ObjectType::isUserType(Py_TYPE(self))
+        ? getCppBaseClasses(Py_TYPE(self))
+        : std::vector<PyTypeObject *>(1, Py_TYPE(self));
 }
 
 static bool isValueType(SbkObject *self)
 {
-    return PepType_SOTP(Shiboken::pyType(self))->type_behaviour == BEHAVIOUR_VALUETYPE;
+    return PepType_SOTP(Py_TYPE(self))->type_behaviour == BEHAVIOUR_VALUETYPE;
 }
 
 void _debugFormat(std::ostream &s, SbkObject *self)
@@ -1974,7 +1929,6 @@ std::string info(SbkObject *self)
 {
     std::ostringstream s;
 
-    s << "id................ " << self << '\n';
     if (self->d && self->d->cptr) {
         const std::vector<PyTypeObject *> bases = getBases(self);
 
@@ -1992,12 +1946,12 @@ std::string info(SbkObject *self)
          "validCppObject.... " << self->d->validCppObject << "\n"
          "wasCreatedByPython " << self->d->cppObjectCreated << "\n"
          "value......        " << isValueType(self) << "\n"
-         "reference count... " << Py_REFCNT(reinterpret_cast<PyObject *>(self)) << '\n';
+         "reference count... " << reinterpret_cast<PyObject *>(self)->ob_refcnt << '\n';
 
     if (self->d->parentInfo && self->d->parentInfo->parent) {
         s << "parent............ ";
         Shiboken::AutoDecRef parent(PyObject_Str(reinterpret_cast<PyObject *>(self->d->parentInfo->parent)));
-        s << String::toCString(parent) << '\n';
+        s << String::toCString(parent) << "\n";
     }
 
     if (self->d->parentInfo && !self->d->parentInfo->children.empty()) {

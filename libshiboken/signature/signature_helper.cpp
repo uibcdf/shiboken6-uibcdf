@@ -11,7 +11,6 @@
 //
 
 #include "autodecref.h"
-#include "sbkpep.h"
 #include "sbkstring.h"
 #include "sbkstaticstrings.h"
 #include "sbkstaticstrings_p.h"
@@ -33,7 +32,7 @@ static int _fixup_getset(PyTypeObject *type, const char *name, PyGetSetDef *new_
     PyGetSetDef *gsp = type->tp_getset;
     if (gsp != nullptr) {
         for (; gsp->name != nullptr; gsp++) {
-            if (std::strcmp(gsp->name, name) == 0) {
+            if (strcmp(gsp->name, name) == 0) {
                 new_gsp->set = gsp->set;
                 new_gsp->doc = gsp->doc;
                 new_gsp->closure = gsp->closure;
@@ -44,7 +43,7 @@ static int _fixup_getset(PyTypeObject *type, const char *name, PyGetSetDef *new_
     PyMemberDef *md = type->tp_members;
     if (md != nullptr)
         for (; md->name != nullptr; md++)
-            if (std::strcmp(md->name, name) == 0)
+            if (strcmp(md->name, name) == 0)
                 return 1;
     return 0;
 }
@@ -65,7 +64,7 @@ int add_more_getsets(PyTypeObject *type, PyGetSetDef *gsp, PyObject **doc_descr)
         PyObject *have_descr = PyDict_GetItemString(dict, gsp->name);
         if (have_descr != nullptr) {
             Py_INCREF(have_descr);
-            if (std::strcmp(gsp->name, "__doc__") == 0)
+            if (strcmp(gsp->name, "__doc__") == 0)
                 *doc_descr = have_descr;
             else
                 assert(false);
@@ -94,7 +93,7 @@ static PyObject *get_funcname(PyObject *ob)
     PyObject *func_name = PyObject_GetAttr(func, PyMagicName::name());
     Py_DECREF(func);
     if (func_name == nullptr)
-        Py_FatalError("libshiboken: unexpected name problem in compute_name_key");
+        Py_FatalError("unexpected name problem in compute_name_key");
     return func_name;
 }
 
@@ -322,7 +321,7 @@ int _build_func_to_type(PyObject *obtype)
 
     // PYSIDE-2404: Get the original dict for late initialization.
     //              The dict might have been switched before signature init.
-    static auto *pyTypeType_tp_dict = PepType_GetDict(&PyType_Type);
+    static const auto *pyTypeType_tp_dict = PepType_GetDict(&PyType_Type);
     if (Py_TYPE(dict) != Py_TYPE(pyTypeType_tp_dict)) {
         tpDict.reset(PyObject_GetAttr(dict, PyName::orig_dict()));
         dict = tpDict.object();

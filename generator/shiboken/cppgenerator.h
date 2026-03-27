@@ -114,9 +114,6 @@ private:
     static void writeCustomConverterRegister(TextStream &s,
                                              const CustomConversionPtr &customConversion,
                                              const QString &converterVar);
-    static void writeTemplateCustomConverterRegister(TextStream &s,
-                                                     const AbstractMetaType &type,
-                                                     QString converter = {});
 
     void writeContainerConverterFunctions(TextStream &s,
                                           const AbstractMetaType &containerType) const;
@@ -130,7 +127,6 @@ private:
         QString registrationCode;
         bool hasQVariantConversion = false;
     };
-    using OpaqueContainerTypeHash = QHash<AbstractMetaType, OpaqueContainerData>;
 
     OpaqueContainerData
         writeOpaqueContainerConverterFunctions(TextStream &s,
@@ -335,7 +331,7 @@ private:
 
     /// Writes a C++ to Python conversion function.
     void writeCppToPythonFunction(TextStream &s, const QString &code, const QString &sourceTypeName,
-                                  const QString &targetTypeName = {}, bool withType = false) const;
+                                  const QString &targetTypeName = {}) const;
     void writeCppToPythonFunction(TextStream &s, const CustomConversionPtr &customConversion) const;
     void writeCppToPythonFunction(TextStream &s, const AbstractMetaType &containerType) const;
     /// Main target type name of a container (for naming the functions).
@@ -365,13 +361,12 @@ private:
                                              const TargetToNativeConversion &toNative,
                                              const TypeEntryCPtr &targetType) const;
 
-    /// Writes a pair of Python to C++ conversion and check functions for instantiated
-    /// template (smart pointer/container types).
+    /// Writes a pair of Python to C++ conversion and check functions for instantiated container types.
     void writePythonToCppConversionFunctions(TextStream &s,
-                                             const AbstractMetaType &templateType) const;
+                                             const AbstractMetaType &containerType) const;
 
     void writePythonToCppConversionFunction(TextStream &s,
-                                            const AbstractMetaType &templateType,
+                                            const AbstractMetaType &containerType,
                                             const TargetToNativeConversion &conv) const;
 
     static void writeAddPythonToCppConversion(TextStream &s, const QString &converterVar,
@@ -424,8 +419,6 @@ private:
     void writeClassDefinition(TextStream &s,
                               const AbstractMetaClassCPtr &metaClass,
                               const GeneratorContext &classContext);
-    static void writeClassTypeFunction(TextStream &s,
-                                       const AbstractMetaClassCPtr &metaClass);
     QByteArrayList methodDefinitionParameters(const OverloadData &overloadData) const;
     QList<PyMethodDefEntry> methodDefinitionEntries(const OverloadData &overloadData) const;
 
@@ -481,9 +474,7 @@ private:
     void writeRichCompareFunction(TextStream &s, TextStream &t, const GeneratorContext &context) const;
     void writeSmartPointerRichCompareFunction(TextStream &s, const GeneratorContext &context) const;
 
-    static void writeEnumsInitialization(TextStream &s, const AbstractMetaEnumList &enums);
-    static void writeEnumsInitFunc(TextStream &s, const QString &funcName,
-                                   const AbstractMetaEnumList &enums);
+    static void writeEnumsInitialization(TextStream &s, AbstractMetaEnumList &enums);
     static bool writeEnumInitialization(TextStream &s, const AbstractMetaEnum &metaEnum);
 
     static void writeSignalInitialization(TextStream &s, const AbstractMetaClassCPtr &metaClass);
@@ -509,25 +500,6 @@ private:
     static void writeExtendedConverterInitialization(TextStream &s,
                                                      const TypeEntryCPtr &externalType,
                                                      const AbstractMetaClassCList &conversions);
-
-    void writeModuleInitFunction(TextStream &s, const QString &moduleDef,
-                                 const QString &execFunc, const QString &convInitFunc,
-                                 const QString &containerConvInitFunc,
-                                 const QString &qtEnumRegisterMetaTypeFunc);
-    void writeModuleExecFunction(TextStream &s, const QString &name,
-                                 const QString &opaqueContainerRegisterFunc,
-                                 const QString &enumRegisterFunc,
-                                 const QString &classPythonDefines,
-                                 const AbstractMetaClassCList &classesWithStaticFields);
-    static void writeConverterInitFunc(TextStream &s, const QString &funcName,
-                                       const QList<CustomConversionPtr> &typeConversions,
-                                       const ExtendedConverterData &extendedConverters);
-    void writeContainerConverterInitFunc(TextStream &s, const QString &funcName,
-                                         const OpaqueContainerTypeHash &opaqueContainers) const;
-    static void writeOpaqueContainerConverterRegisterFunc(TextStream &s, const QString &funcName,
-                                                          const OpaqueContainerTypeHash &opaqueContainers);
-    static void writeQtEnumRegisterMetaTypeFunction(TextStream &s, const QString &name,
-                                                    const AbstractMetaEnumList &globalEnums);
 
     void writeParentChildManagement(TextStream &s, const AbstractMetaFunctionCPtr &func,
                                     bool usesPyArgs,
@@ -592,6 +564,7 @@ private:
     { return boolCast(metaClass).has_value(); }
 
     void clearTpFuncs();
+    static QString chopType(QString s);
 
     static QString typeInitStructHelper(const TypeEntryCPtr &te, const QString &varName);
 

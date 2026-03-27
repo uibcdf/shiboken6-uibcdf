@@ -4,12 +4,11 @@
 #include "sbkconverter.h"
 #include "sbkconverter_p.h"
 #include "sbkarrayconverter_p.h"
-#include "sbkmodule_p.h"
+#include "sbkmodule.h"
 #include "basewrapper_p.h"
 #include "bindingmanager.h"
 #include "autodecref.h"
 #include "helper.h"
-#include "sbkpep.h"
 #include "voidptr.h"
 
 #include <string>
@@ -85,9 +84,9 @@ static void dumpPyTypeObject(std::ostream &str, PyTypeObject *t)
         str << "<None>";
         return;
     }
-    str << '"' << PepType_GetFullyQualifiedNameStr(t) << '"';
+    str << '"' << t->tp_name << '"';
     if (t->tp_base != nullptr && t->tp_base != &PyBaseObject_Type)
-        str << '(' << PepType_GetFullyQualifiedNameStr(t->tp_base) << ')';
+        str << '(' << t->tp_base->tp_name << ')';
 }
 
 static void dumpSbkConverter(std::ostream &str, const SbkConverter *c)
@@ -184,11 +183,10 @@ SbkConverter *createConverterObject(PyTypeObject *type,
     auto *converter = new SbkConverter;
     converter->pythonType = type;
     // PYSIDE-595: All types are heaptypes now, so provide reference.
-    Py_XINCREF(reinterpret_cast<PyObject *>(type));
+    Py_XINCREF(type);
 
     converter->pointerToPython = pointerToPythonFunc;
     converter->copyToPython = copyToPythonFunc;
-    converter->copyToPythonWithType = nullptr;
 
     if (toCppPointerCheckFunc && toCppPointerConvFunc)
         converter->toCppPointerConversion = std::make_pair(toCppPointerCheckFunc, toCppPointerConvFunc);
@@ -214,13 +212,6 @@ SbkConverter *createConverter(PyTypeObject *type,
 SbkConverter *createConverter(PyTypeObject *type, CppToPythonFunc toPythonFunc)
 {
     return createConverterObject(type, nullptr, nullptr, nullptr, toPythonFunc);
-}
-
-SbkConverter *createConverter(PyTypeObject *type, CppToPythonWithTypeFunc toPythonFunc)
-{
-    auto *result = createConverterObject(type, nullptr, nullptr, nullptr, nullptr);
-    result->copyToPythonWithType = toPythonFunc;
-    return result;
 }
 
 void deleteConverter(SbkConverter *converter)
@@ -302,8 +293,8 @@ PyObject *referenceToPython(const SbkConverter *converter, const void *cppIn)
 {
     assert(cppIn);
 
-    if (auto *sbkOut = BindingManager::instance().retrieveWrapper(cppIn, converter->pythonType)) {
-        auto *pyOut = reinterpret_cast<PyObject *>(sbkOut);
+    auto *pyOut = reinterpret_cast<PyObject *>(BindingManager::instance().retrieveWrapper(cppIn));
+    if (pyOut) {
         Py_INCREF(pyOut);
         return pyOut;
     }
@@ -319,13 +310,12 @@ static inline PyObject *CopyCppToPython(const SbkConverter *converter, const voi
 {
     if (!cppIn)
         Py_RETURN_NONE;
-    if (converter->copyToPythonWithType != nullptr)
-        return converter->copyToPythonWithType(converter->pythonType, cppIn);
-    if (converter->copyToPython != nullptr)
-        return converter->copyToPython(cppIn);
-    warning(PyExc_RuntimeWarning, 0, "CopyCppToPython(): SbkConverter::copyToPython is null for \"%s\".",
-            converter->pythonType->tp_name);
-    Py_RETURN_NONE;
+    if (!converter->copyToPython) {
+        warning(PyExc_RuntimeWarning, 0, "CopyCppToPython(): SbkConverter::copyToPython is null for \"%s\".",
+                converter->pythonType->tp_name);
+        Py_RETURN_NONE;
+    }
+    return converter->copyToPython(cppIn);
 }
 
 PyObject *copyToPython(PyTypeObject *type, const void *cppIn)
@@ -461,13 +451,9 @@ void nonePythonToCppNullPtr(PyObject *, void *cppOut)
 void *cppPointer(PyTypeObject *desiredType, SbkObject *pyIn)
 {
     assert(pyIn);
-    if (!ObjectType::checkType(desiredType)) {
-        std::cerr << __FUNCTION__ << ": Conversion to non SbkObject type "
-                  << PepType_GetFullyQualifiedNameStr(desiredType)
-                  << " requested, falling back to pass-through.\n";
+    if (!ObjectType::checkType(desiredType))
         return pyIn;
-    }
-    auto *inType = Shiboken::pyType(pyIn);
+    auto *inType = Py_TYPE(pyIn);
     if (ObjectType::hasCast(inType))
         return ObjectType::cast(inType, pyIn, desiredType);
     return Object::cppPointer(pyIn, desiredType);
@@ -499,14 +485,8 @@ static void _pythonToCppCopy(const SbkConverter *converter, PyObject *pyIn, void
     assert(pyIn);
     assert(cppOut);
     PythonToCppFunc toCpp = IsPythonToCppConvertible(converter, pyIn);
-    if (toCpp) {
+    if (toCpp)
         toCpp(pyIn, cppOut);
-    } else {
-        std::cerr << __FUNCTION__ << ": Cannot copy-convert " << pyIn;
-        if (pyIn)
-            std::cerr << " (" << PepType_GetFullyQualifiedNameStr(Py_TYPE(pyIn)) << ')';
-        std::cerr << " to C++.\n";
-    }
 }
 
 void pythonToCppCopy(PyTypeObject *type, PyObject *pyIn, void *cppOut)
@@ -595,7 +575,7 @@ SbkConverter *getConverter(const char *typeNameC)
         return it->second;
     // PYSIDE-2404: Did not find the name. Load the lazy classes
     //              which have this name and try again.
-    Shiboken::Module::loadLazyClassesWithNameStd(getRealTypeName(typeName));
+    Shiboken::Module::loadLazyClassesWithName(getRealTypeName(typeName).c_str());
     it = converters.find(typeName);
     if (it != converters.end())
         return it->second;
@@ -876,23 +856,18 @@ PyTypeObject *getPythonTypeObject(const char *typeName)
     return getPythonTypeObject(getConverter(typeName));
 }
 
-static bool hasCopyToPythonFunc(const SbkConverter *converter)
-{
-    return converter->copyToPython != nullptr || converter->copyToPythonWithType != nullptr;
-}
-
 bool pythonTypeIsValueType(const SbkConverter *converter)
 {
     // Unlikely to happen but for multi-inheritance SbkObjs
     // the converter is not defined, hence we need a default return.
     if (!converter)
         return false;
-    return converter->pointerToPython && hasCopyToPythonFunc(converter);
+    return converter->pointerToPython && converter->copyToPython;
 }
 
 bool pythonTypeIsObjectType(const SbkConverter *converter)
 {
-    return converter->pointerToPython && !hasCopyToPythonFunc(converter);
+    return converter->pointerToPython && !converter->copyToPython;
 }
 
 bool pythonTypeIsWrapperType(const SbkConverter *converter)
@@ -906,7 +881,7 @@ SpecificConverter::SpecificConverter(const char *typeName)
     m_converter = getConverter(typeName);
     if (!m_converter)
         return;
-    const auto len = std::strlen(typeName);
+    const auto len = strlen(typeName);
     char lastChar = typeName[len -1];
     if (lastChar == '&') {
         m_type = ReferenceConversion;

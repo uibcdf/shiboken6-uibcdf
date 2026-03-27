@@ -8,7 +8,6 @@
 #include "sbkstring.h"
 #include "sbkcppstring.h"
 #include "sbkconverter_p.h"
-#include "sbkpep.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -57,8 +56,8 @@ LIBSHIBOKEN_API PyTypeObject *get(TypeInitStruct &typeStruct)
     // As soon as types[index] gets filled, we can stop.
 
     std::string_view names(typeStruct.fullName);
-    const bool usePySide = names.compare(0, 8, "PySide6.") == 0;
-    auto dotPos = usePySide ? names.find('.', 8) : names.find('.');
+    const bool usePySide = names.compare(0, 15, "PySide6_uibcdf.") == 0;
+    auto dotPos = usePySide ? names.find('.', 15) : names.find('.');
     auto startPos = dotPos + 1;
     AutoDecRef modName(String::fromCppStringView(names.substr(0, dotPos)));
     auto *modOrType = PyDict_GetItem(sysModules, modName);
@@ -117,7 +116,7 @@ static void incarnateSubtypes(PyObject *module,
     }
 }
 
-static PyTypeObject *incarnateType(PyObject *module, const std::string &name,
+static PyTypeObject *incarnateType(PyObject *module, const char *name,
                                    NameToTypeFunctionMap &nameToFunc)
 {
     // - locate the name and retrieve the generating function
@@ -140,8 +139,9 @@ static PyTypeObject *incarnateType(PyObject *module, const std::string &name,
     initSelectableFeature(saveFeature);
 
     // - assign this object to the name in the module
-    Py_INCREF(reinterpret_cast<PyObject *>(type));
-    PepModule_AddType(module, type);   // steals reference
+    auto *res = reinterpret_cast<PyObject *>(type);
+    Py_INCREF(res);
+    PyModule_AddObject(module, name, res);   // steals reference
     // - remove the entry, if not by something cleared.
     if (!nameToFunc.empty())
         nameToFunc.erase(funcIter);
@@ -152,7 +152,7 @@ static PyTypeObject *incarnateType(PyObject *module, const std::string &name,
 // PYSIDE-2404: Make sure that the mentioned classes really exist.
 // Used in `Pyside::typeName`. Because the result will be cached by
 // the creation of the type(s), this is efficient.
-void loadLazyClassesWithNameStd(const std::string &name)
+void loadLazyClassesWithName(const char *name)
 {
     for (auto const & tableIter : moduleToFuncs) {
         auto nameToFunc = tableIter.second;
@@ -163,11 +163,6 @@ void loadLazyClassesWithNameStd(const std::string &name)
             incarnateType(module, name, nameToFunc);
         }
     }
-}
-
-void loadLazyClassesWithName(const char *name)
-{
-    loadLazyClassesWithNameStd(std::string(name));
 }
 
 // PYSIDE-2404: Completely load all not yet loaded classes.
@@ -262,6 +257,13 @@ static PyMethodDef module_methods[] = {
     {nullptr, nullptr, 0, nullptr}
 };
 
+// Python 3.8 - 3.12
+static int const LOAD_CONST_312 = 100;
+static int const IMPORT_NAME_312 = 108;
+// Python 3.13
+static int const LOAD_CONST_313 = 83;
+static int const IMPORT_NAME_313 = 75;
+
 // OpCodes: Adapt for each Python version by checking the defines in the generated header opcode_ids.h
 // egrep '( LOAD_CONST | IMPORT_NAME )' opcode_ids.h
 
@@ -337,7 +339,9 @@ static bool isImportStar(PyObject *module)
 }
 
 // PYSIDE-2404: These modules produce ambiguous names which we cannot handle, yet.
-static std::unordered_set<std::string> dontLazyLoad;
+static std::unordered_set<std::string> dontLazyLoad{
+    "testbinding"
+};
 
 static const std::unordered_set<std::string> knownModules{
     "shiboken6_uibcdf.Shiboken",
@@ -419,19 +423,18 @@ void AddTypeCreationFunction(PyObject *module,
 }
 
 void AddTypeCreationFunction(PyObject *module,
-                             const char *enclosingName,
+                             const char *containerName,
                              TypeCreationFunction func,
-                             const char *subTypeNamePath)
+                             const char *namePath)
 {
     // - locate the module in the moduleTofuncs mapping
     auto tableIter = moduleToFuncs.find(module);
     assert(tableIter != moduleToFuncs.end());
     // - Assign the name/generating function tcStruct.
     auto &nameToFunc = tableIter->second;
-    auto nit = nameToFunc.find(enclosingName);
+    auto nit = nameToFunc.find(containerName);
 
     // - insert namePath into the subtype vector of the main type.
-    std::string namePath(subTypeNamePath);
     nit->second.subtypeNames.emplace_back(namePath);
     // - insert it also as its own entry.
     nit = nameToFunc.find(namePath);
@@ -487,40 +490,21 @@ static PyMethodDef lazy_methods[] = {
     {nullptr, nullptr, 0, nullptr}
 };
 
-PyObject *createOnly(const char * /* moduleName */, PyModuleDef *moduleData)
-
-{
-    Shiboken::init();
-    auto *module = PyModule_Create(moduleData);
-    if (module == nullptr) {
-        PyErr_Print();
-        return nullptr;
-    }
-#ifdef Py_GIL_DISABLED
-    PyUnstable_Module_SetGIL(module, Py_MOD_GIL_NOT_USED);
-#endif
-    return module;
-}
-
-PyObject *create(const char *moduleName, PyModuleDef *moduleData)
-{
-    auto *module = createOnly(moduleName, moduleData);
-    if (module != nullptr)
-        exec(module);
-    return module;
-}
-
-void exec(PyObject *module)
+PyObject *create(const char * /* modName */, void *moduleData)
 {
     static auto *sysModules = PyImport_GetModuleDict();
+    static auto *builtins = PyEval_GetBuiltins();
     static auto *partial = Pep_GetPartialFunction();
     static bool lazy_init{};
+
+    Shiboken::init();
+    auto *module = PyModule_Create(reinterpret_cast<PyModuleDef *>(moduleData));
 
     // Setup of a dir function for "missing" classes.
     auto *moduleDirTemplate = PyCFunction_NewEx(module_methods, nullptr, nullptr);
     // Turn this function into a bound object, so we have access to the module.
     auto *moduleDir = PyObject_CallFunctionObjArgs(partial, moduleDirTemplate, module, nullptr);
-    PepModule_Add(module, module_methods->ml_name, moduleDir);  // steals reference
+    PyModule_AddObject(module, module_methods->ml_name, moduleDir);  // steals reference
     // Insert an initial empty table for the module.
     NameToTypeFunctionMap empty;
     moduleToFuncs.insert(std::make_pair(module, empty));
@@ -534,11 +518,10 @@ void exec(PyObject *module)
         origModuleGetattro = PyModule_Type.tp_getattro;
         PyModule_Type.tp_getattro = PyModule_lazyGetAttro;
         // Add the lazy import redirection, keeping a reference.
-        Shiboken::AutoDecRef builtins(PepEval_GetFrameBuiltins());
-        origImportFunc = PyDict_GetItemString(builtins.object(), "__import__");
+        origImportFunc = PyDict_GetItemString(builtins, "__import__");
         Py_INCREF(origImportFunc);
         AutoDecRef func(PyCFunction_NewEx(lazy_methods, nullptr, nullptr));
-        PyDict_SetItemString(builtins.object(), "__import__", func);
+        PyDict_SetItemString(builtins, "__import__", func);
         lazy_init = true;
     }
     // PYSIDE-2404: Nuitka inserts some additional code in standalone mode
@@ -546,10 +529,11 @@ void exec(PyObject *module)
     //              that gets imported before the running import can call
     //              `_PyImport_FixupExtensionObject` which does the insertion
     //              into `sys.modules`. This can cause a race condition.
-    // Insert the module early into the module dict to prevent recursion.
+    // Insert the module early into the module dict to prevend recursion.
     PyDict_SetItemString(sysModules, PyModule_GetName(module), module);
     // Clear the non-existing name cache because we have a new module.
     Shiboken::Conversions::clearNegativeLazyCache();
+    return module;
 }
 
 void registerTypes(PyObject *module, TypeInitStruct *types)
@@ -593,7 +577,7 @@ bool replaceModuleDict(PyObject *module, PyObject *modClass, PyObject *dict)
     auto *modict = PyModule_GetDict(module);
     auto *modIntern = reinterpret_cast<StartOf_PyModuleObject *>(module);
     if (modict != modIntern->md_dict)
-        Py_FatalError("libshiboken: The layout of modules is incompatible");
+        Py_FatalError("The layout of modules is incompatible");
     auto *hold = modIntern->md_dict;
     modIntern->md_dict = dict;
     Py_INCREF(dict);

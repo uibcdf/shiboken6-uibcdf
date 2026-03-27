@@ -5,12 +5,10 @@
 #define SAMPLENAMESPACE_H
 
 #include "libsamplemacros.h"
-#include "samplenamespace.h"
 #include "str.h"
 #include "point.h"
 #include "objecttype.h"
 
-#include <optional>
 #include <list>
 
 // Anonymous global enum
@@ -87,12 +85,6 @@ class LIBSAMPLE_API SomeClass
 public:
     enum class PublicScopedEnum { v1, v2 };
 
-    // Alias an enumeration
-    using OptionAlias = Option;
-    inline static constexpr auto None_ = Option::None_;
-    inline static constexpr auto RandomNumber = Option::RandomNumber;
-    inline static constexpr auto UnixTime  = Option::UnixTime;
-
     class SomeInnerClass
     {
     public:
@@ -114,21 +106,16 @@ public:
             inline int someMethod(SomeInnerClass *) { return 0; }
             virtual OkThisIsRecursiveEnough *someVirtualMethod(OkThisIsRecursiveEnough *arg)
             { return arg; }
-        }; // OkThisIsRecursiveEnough
+        };
     protected:
         enum ProtectedEnum {
             ProtectedItem0,
             ProtectedItem1
         };
-    }; // SomeInnerClass
-
+    };
     struct SomeOtherInnerClass {
         std::list<SomeInnerClass> someInnerClasses;
     };
-
-    static OptionAlias passThroughOptionAlias(OptionAlias ov);
-    static Option passThroughOption(Option ov);
-
 protected:
     enum ProtectedEnum {
         ProtectedItem0,
@@ -169,9 +156,6 @@ LIBSAMPLE_API void forceDecisorSideB(int a, const Point &pt, const Str &text,
 LIBSAMPLE_API double passReferenceToValueType(const Point &point, double multiplier);
 // Add a new signature on type system with only a ObjectType pointer as parameter.
 LIBSAMPLE_API int passReferenceToObjectType(const ObjectType &obj, int multiplier);
-
-LIBSAMPLE_API std::optional<long> optionalMultiply(const std::optional<long> &v1,
-                                                   const std::optional<long> &v2);
 
 extern LIBSAMPLE_API int variableInNamespace;
 

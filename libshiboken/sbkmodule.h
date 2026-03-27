@@ -37,19 +37,12 @@ LIBSHIBOKEN_API void resolveLazyClasses(PyObject *module);
 LIBSHIBOKEN_API PyObject *import(const char *moduleName);
 
 /**
- *  Creates a new Python module named \p moduleName using the information passed in \p moduleData
- *  and calls exec() on it.
+ *  Creates a new Python module named \p moduleName using the information passed in \p moduleData.
+ *  In fact, \p moduleData expects a "PyMethodDef *" object, but that's for Python 2. A "void*"
+ *  was preferred to make this work with future Python 3 support.
  *  \returns a newly created module.
  */
-[[deprecated]] LIBSHIBOKEN_API PyObject *create(const char *moduleName, PyModuleDef *moduleData);
-
-/// Creates a new Python module named \p moduleName using the information passed in \p moduleData.
-/// exec() is not called (Support for Nuitka).
-/// \returns a newly created module.
-LIBSHIBOKEN_API PyObject *createOnly(const char *moduleName, PyModuleDef *moduleData);
-
-/// Executes a module (multi-phase initialization helper)
-LIBSHIBOKEN_API void exec(PyObject *module);
+LIBSHIBOKEN_API PyObject *create(const char *moduleName, void *moduleData);
 
 using TypeCreationFunction = PyTypeObject *(*)(PyObject *module);
 
@@ -59,9 +52,9 @@ LIBSHIBOKEN_API void AddTypeCreationFunction(PyObject *module,
                                              TypeCreationFunction func);
 
 LIBSHIBOKEN_API void AddTypeCreationFunction(PyObject *module,
-                                             const char *enclosingName,
+                                             const char *name,
                                              TypeCreationFunction func,
-                                             const char *subTypeNamePath);
+                                             const char *containerName);
 
 /**
  *  Registers the list of types created by \p module.

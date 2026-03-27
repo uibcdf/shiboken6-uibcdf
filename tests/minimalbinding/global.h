@@ -8,4 +8,3 @@
 #include "listuser.h"
 #include "spanuser.h"
 #include "typedef.h"
-#include "invisiblenamespace.h"

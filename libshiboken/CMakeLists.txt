@@ -3,8 +3,6 @@
 
 project(libshiboken)
 
-set(SHIBOKEN_UIBCDF_PYTHON_PACKAGE "shiboken6_uibcdf")
-
 option(ENABLE_VERSION_SUFFIX "Used to use current version in suffix to generated files. This is used to allow multiples versions installed simultaneous." FALSE)
 if(ENABLE_VERSION_SUFFIX)
     set(shiboken6_SUFFIX "-${shiboken_MAJOR_VERSION}.${shiboken_MINOR_VERSION}")
@@ -77,11 +75,9 @@ sbkcppstring.cpp sbkcppstring.h sbkcpptonumpy.h
 sbkenum.cpp sbkenum.h
 sbkerrors.cpp sbkerrors.h
 sbkfeature_base.cpp sbkfeature_base.h
-sbkmodule.cpp sbkmodule.h sbkmodule_p.h
+sbkmodule.cpp sbkmodule.h
 sbknumpy.cpp sbknumpycheck.h
 sbknumpyview.h
-sbkpep.h
-sbkpepbuffer.h
 sbkpython.h
 sbksmartpointer.cpp sbksmartpointer.h
 sbkstaticstrings.cpp sbkstaticstrings.h sbkstaticstrings_p.h
@@ -113,7 +109,7 @@ add_library(Shiboken6::libshiboken ALIAS libshiboken)
 target_include_directories(libshiboken PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-  $<INSTALL_INTERFACE:${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}/include>
+  $<INSTALL_INTERFACE:include/shiboken6>
 )
 
 if (NOT "${NUMPY_INCLUDE_DIR}" STREQUAL "")
@@ -174,7 +170,6 @@ install(FILES
         sbkerrors.h
         sbkfeature_base.h
         sbkmodule.h
-        sbkmodule_p.h
         sbknumpycheck.h
         sbknumpyview.h
         sbkstring.h
@@ -186,8 +181,6 @@ install(FILES
         shibokenmacros.h
         threadstatesaver.h
         shibokenbuffer.h
-        sbkpep.h
-        sbkpepbuffer.h
         sbkpython.h
         sbkwindows.h
         pep384impl.h
@@ -199,27 +192,10 @@ install(FILES
         signature.h
         signature_p.h
 
-        DESTINATION ${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}${shiboken6_SUFFIX}/include)
+        DESTINATION include/shiboken6${shiboken6_SUFFIX})
 install(TARGETS libshiboken EXPORT Shiboken6Targets
                             LIBRARY DESTINATION "${LIB_INSTALL_DIR}"
                             ARCHIVE DESTINATION "${LIB_INSTALL_DIR}"
                             RUNTIME DESTINATION bin)
 install(EXPORT Shiboken6Targets NAMESPACE Shiboken6::
         DESTINATION ${LIB_INSTALL_DIR}/cmake/Shiboken6)
-
-# wheel specific installation
-if(NOT is_pyside6_superproject_build)
-
-    set_target_properties(libshiboken PROPERTIES
-        VERSION ${libshiboken_SOVERSION})
-
-    install(TARGETS libshiboken EXPORT Shiboken6WheelTargets
-            LIBRARY DESTINATION "${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}"
-            ARCHIVE DESTINATION "${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}"
-            RUNTIME DESTINATION "${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}")
-
-    install(EXPORT Shiboken6WheelTargets
-            NAMESPACE Shiboken6::
-            DESTINATION "${LIB_INSTALL_DIR}/wheels/cmake/Shiboken6"
-            FILE Shiboken6Targets.cmake)
-endif()

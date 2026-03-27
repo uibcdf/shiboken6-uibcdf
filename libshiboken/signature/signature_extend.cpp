@@ -22,14 +22,11 @@
 //             Shiboken.ObjectType and Shiboken.EnumMeta have new getsets, instead.
 
 #include "autodecref.h"
-#include "sbkpep.h"
 #include "sbkstring.h"
 #include "sbkstaticstrings.h"
 #include "sbkstaticstrings_p.h"
 
 #include "signature_p.h"
-
-#include <cstring>
 
 using namespace Shiboken;
 
@@ -82,7 +79,7 @@ PyObject *pyside_md_get___signature__(PyObject *ob_md, PyObject *modifier)
     if (func.object() == Py_None)
         Py_RETURN_NONE;
     if (func.isNull())
-        Py_FatalError("libshiboken: missing mapping in MethodDescriptor");
+        Py_FatalError("missing mapping in MethodDescriptor");
     return pyside_cf_get___signature__(func, modifier);
 }
 
@@ -126,11 +123,11 @@ static PyObject *handle_doc(PyObject *ob, PyObject *old_descr)
     bool isModule = PyModule_Check(ob_type_mod.object());
     const char *name = isModule
         ? PyModule_GetName(ob_type_mod.object())
-        : PepType_GetFullyQualifiedNameStr(reinterpret_cast<PyTypeObject *>(ob_type_mod.object()));
+        : reinterpret_cast<PyTypeObject *>(ob_type_mod.object())->tp_name;
     PyObject *res{};
 
     if (handle_doc_in_progress || name == nullptr
-        || (isModule && std::strncmp(name, "PySide6.", 8) != 0)) {
+        || (isModule && strncmp(name, "PySide6_uibcdf.", 15) != 0)) {
         res = PyObject_CallMethodObjArgs(old_descr, PyMagicName::get(), ob, nullptr);
     } else {
         handle_doc_in_progress++;

@@ -69,6 +69,8 @@ public:
     const QStringList &conditions() const { return m_conditions; }
     void setConditions(const QStringList &newConditions);
 
+    static QStringList platformConditions();
+
 private:
     enum class PiTokens { None, If, Endif, EntityDefinition };
 
@@ -80,7 +82,7 @@ private:
 
     QXmlStreamReader m_reader;
     ProxyEntityResolver *m_proxyEntityResolver = nullptr;
-    QStringList m_conditions;
+    QStringList m_conditions = ConditionalStreamReader::platformConditions();
 };
 
 QDebug operator<<(QDebug dbg, const QXmlStreamAttributes &a);

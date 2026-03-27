@@ -208,9 +208,6 @@ can be generated for them. Instead, an instance of the viewed class should
 be instantiated and passed to functions using the view class
 for argument types.
 
-It is also possible to specify template specializations
-like "std::optional<int>" as primitive types with converters.
-
 See :ref:`predefined_templates` for built-in templates for standard type
 conversion rules.
 
@@ -346,23 +343,6 @@ production of ABI compatible bindings.
 
 The **flags-revision** attribute has the same purposes of **revision** attribute but
 is used for the QFlag related to this enum.
-
-An enum can also be a C++ type alias:
-
-.. code-block:: c++
-
-    enum Option { Value1 = 0; }
-
-    class SomeClass {
-        public:
-        using OptionAlias = Option;
-    };
-
-In this case, when specifying `<enum-type name="OptionAlias"...>` in
-`SomeClass`, an enumeration `OptionAlias` will be generated into the class. The
-values of `OptionAlias` and `Option` can be used interchangeably. This feature
-is specifically intended for renaming enumerations by deprecating; it works for
-at most one alias.
 
 .. _reject-enum-value:
 
@@ -746,8 +726,7 @@ The ``smart pointer`` type node indicates that the given class is a smart pointe
 and requires inserting calls to **getter** to access the pointeee.
 Currently, the usage is limited to function return values.
 **ref-count-method** specifies the name of the method used to do reference counting.
-It is a child of the :ref:`typesystem_details` node or other type nodes
-and may contain :ref:`conversion-rule` nodes.
+It is a child of the :ref:`typesystem_details` node or other type nodes.
 
 The *optional* attribute **instantiations** specifies for which instantiations
 of the smart pointer wrappers will be generated (comma-separated list).

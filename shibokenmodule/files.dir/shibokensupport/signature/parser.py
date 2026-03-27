@@ -177,9 +177,9 @@ def _parse_line(line):
 def using_snake_case():
     # Note that this function should stay here where we use snake_case.
     # This function is only meant for creating correct PYI files.
-    if "PySide6.QtCore" not in sys.modules:
+    if "PySide6_uibcdf.QtCore" not in sys.modules:
         return False
-    from PySide6.QtCore import QDir
+    from PySide6_uibcdf.QtCore import QDir
     return hasattr(QDir, "cd_up")
 
 
@@ -248,7 +248,7 @@ def get_name(thing):
 
 def _resolve_value(thing, valtype, line):
     if thing in ("0", "None") and valtype:
-        if valtype.startswith(("PySide6.", "typing.", "collections.abc.")):
+        if valtype.startswith(("PySide6_uibcdf.", "typing.", "collections.abc.")):
             return None
         mapped = type_map.get(valtype)
         # typing.Any: '_SpecialForm' object has no attribute '__name__'
@@ -317,13 +317,13 @@ def to_string(thing):
     return str(thing)
 
 
-matrix_pattern = "PySide6.QtGui.QGenericMatrix"
+matrix_pattern = "PySide6_uibcdf.QtGui.QGenericMatrix"
 
 
 def handle_matrix(arg):
     n, m, typstr = tuple(map(lambda x: x.strip(), arg.split(",")))
     assert typstr == "float"
-    result = f"PySide6.QtGui.QMatrix{n}x{m}"
+    result = f"PySide6_uibcdf.QtGui.QMatrix{n}x{m}"
     return eval(result, globals(), namespace)
 
 
@@ -350,7 +350,7 @@ def _resolve_type(thing, line, level, var_handler, func_name=None):
             return type_map_tuple[new_thing]
 
     # Capture total replacements, first. Happens in
-    # "PySide6.QtCore.QCborStreamReader.StringResult[PySide6.QtCore.QByteArray]"
+    # "PySide6_uibcdf.QtCore.QCborStreamReader.StringResult[PySide6_uibcdf.QtCore.QByteArray]"
     if thing in type_map:
         return type_map[thing]
 

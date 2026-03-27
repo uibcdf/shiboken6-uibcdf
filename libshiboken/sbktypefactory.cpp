@@ -2,15 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "sbktypefactory.h"
-#include "autodecref.h"
-#include "sbkpep.h"
-#include "sbkpepbuffer.h"
-#include "sbkstring.h"
-#include "sbkstaticstrings.h"
-
-#include <cstring>
-#include <iostream>
-#include <utility>
+#include "shiboken.h"
 
 extern "C"
 {
@@ -72,18 +64,10 @@ static PyObject *_PyType_FromSpecWithBasesHack(PyType_Spec *spec,
         }
 
         for (Py_ssize_t idx = 0, n = PyTuple_Size(bases); idx < n; ++idx) {
-            PyObject *obBase = PyTuple_GetItem(bases, idx);
-            auto *base = reinterpret_cast<PyTypeObject *>(obBase);
-            PyTypeObject *meta = Py_TYPE(obBase);
+            PyTypeObject *base = reinterpret_cast<PyTypeObject *>(PyTuple_GetItem(bases, idx));
+            PyTypeObject *meta = Py_TYPE(base);
             if (meta->tp_new != PyType_Type.tp_new) {
                 // make sure there is no second meta class
-                if (keepMeta != nullptr) {
-                    std::cerr << "Warning: " << __FUNCTION__
-                        << ": multiple meta classes found for " << spec->name << " at "
-                        << idx << ": " << PepType_GetFullyQualifiedNameStr(base)
-                        << " in addition to "
-                        << PepType_GetFullyQualifiedNameStr(keepMeta) << '\n';
-                }
                 assert(keepMeta == nullptr);
                 keepMeta = meta;
                 keepNew = meta->tp_new;
@@ -127,7 +111,7 @@ PyTypeObject *SbkType_FromSpec_BMDWB(PyType_Spec *spec,
     //    __name__     : "subclass"
 
     PyType_Spec new_spec = *spec;
-    const char *colon = std::strchr(spec->name, ':');
+    const char *colon = strchr(spec->name, ':');
     assert(colon);
     int package_level = atoi(spec->name);
     const char *mod = new_spec.name = colon + 1;
@@ -138,7 +122,7 @@ PyTypeObject *SbkType_FromSpec_BMDWB(PyType_Spec *spec,
 
     const char *qual = mod;
     for (int idx = package_level; idx > 0; --idx) {
-        const char *dot = std::strchr(qual, '.');
+        const char *dot = strchr(qual, '.');
         if (!dot)
             break;
         qual = dot + 1;
@@ -150,10 +134,11 @@ PyTypeObject *SbkType_FromSpec_BMDWB(PyType_Spec *spec,
     auto *type = reinterpret_cast<PyTypeObject *>(obType);
 
     if (meta) {
-        PyTypeObject *hold = std::exchange(obType->ob_type, meta);
-        Py_INCREF(reinterpret_cast<PyObject *>(Py_TYPE(obType)));
+        PyTypeObject *hold = Py_TYPE(type);
+        obType->ob_type = meta;
+        Py_INCREF(Py_TYPE(type));
         if (hold->tp_flags & Py_TPFLAGS_HEAPTYPE)
-            Py_DECREF(reinterpret_cast<PyObject *>(hold));
+            Py_DECREF(hold);
     }
 
     if (dictoffset)
@@ -311,7 +296,7 @@ _PyType_FromSpecWithBases(PyType_Spec *spec, PyObject *bases)
     }
 
     /* Set the type name and qualname */
-    s = std::strrchr(const_cast<char *>(spec->name), '.');
+    s = strrchr(const_cast<char *>(spec->name), '.');
     if (s == nullptr)
         s = (char*)spec->name;
     else
@@ -379,7 +364,7 @@ _PyType_FromSpecWithBases(PyType_Spec *spec, PyObject *bases)
         if (slot->slot == Py_tp_doc) {
             const char *old_doc = reinterpret_cast<char *>(slot->pfunc);
             //_PyType_DocWithoutSignature(type->tp_name, slot->pfunc);
-            size_t len = std::strlen(old_doc)+1;
+            size_t len = strlen(old_doc)+1;
             char *tp_doc = reinterpret_cast<char *>(PyObject_MALLOC(len));
             if (tp_doc == nullptr) {
                 type->tp_doc = nullptr;

@@ -15,9 +15,6 @@ init_paths()
 from sample import ObjectModel, ObjectView
 
 
-REF_COUNT_DELTA = 2 if sys.version_info >= (3, 14) else 1
-
-
 class TestKeepReference(unittest.TestCase):
     '''Test case for objects that keep references to other object without
        owning them (e.g. model/view relationships).'''
@@ -29,15 +26,15 @@ class TestKeepReference(unittest.TestCase):
         refcount1 = sys.getrefcount(model1)
         view1 = ObjectView()
         view1.setModel(model1)
-        self.assertEqual(sys.getrefcount(view1.model()), refcount1 + REF_COUNT_DELTA)
+        self.assertEqual(sys.getrefcount(view1.model()), refcount1 + 1)
 
         view2 = ObjectView()
         view2.setModel(model1)
-        self.assertEqual(sys.getrefcount(view2.model()), refcount1 + REF_COUNT_DELTA + 1)
+        self.assertEqual(sys.getrefcount(view2.model()), refcount1 + 2)
 
         model2 = ObjectModel()
         view2.setModel(model2)
-        self.assertEqual(sys.getrefcount(view1.model()), refcount1 + REF_COUNT_DELTA)
+        self.assertEqual(sys.getrefcount(view1.model()), refcount1 + 1)
 
     @unittest.skipUnless(hasattr(sys, "getrefcount"), f"{sys.implementation.name} has no refcount")
     def testReferenceCountingWhenDeletingReferrer(self):
@@ -46,7 +43,7 @@ class TestKeepReference(unittest.TestCase):
         refcount1 = sys.getrefcount(model)
         view = ObjectView()
         view.setModel(model)
-        self.assertEqual(sys.getrefcount(view.model()), refcount1 + REF_COUNT_DELTA)
+        self.assertEqual(sys.getrefcount(view.model()), refcount1 + 1)
 
         del view
         self.assertEqual(sys.getrefcount(model), refcount1)

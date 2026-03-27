@@ -30,8 +30,6 @@
 
 #include <algorithm>
 #include <iterator>
-#include <optional>
-#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -247,35 +245,23 @@ QtDocParser::FunctionDocumentationOpt
     return std::nullopt;
 }
 
-// Extract the <brief>/detailed sections from a WebXML (class) documentation (from <description>)
-static std::pair<QString, QString> extractBrief(QString value)
+// Extract the <brief> section from a WebXML (class) documentation and remove it
+// from the source.
+static QString extractBrief(QString *value)
 {
-    std::pair<QString, QString> result;
-    const auto briefStart = value.indexOf(briefStartElement);
-    if (briefStart > 0) {
-        const auto briefEnd = value.indexOf(briefEndElement,
-                                            briefStart + briefStartElement.size());
-        if (briefEnd > briefStart) {
-            const auto briefLength = briefEnd + briefEndElement.size() - briefStart;
-            if (briefLength > briefStartElement.size() + briefEndElement.size())
-                result.first = value.sliced(briefStart, briefLength);
-            value.remove(briefStart, briefLength);
-            // Remove any space/newlines between the <brief/> element and its
-            // surrounding XML elements.
-            auto lastElement = value.lastIndexOf(u'>', briefStart);
-            if (lastElement != -1) {
-                ++lastElement;
-                const auto nextElement = value.indexOf(u'<', briefStart);
-                if (nextElement > lastElement)
-                    value.remove(lastElement, nextElement - lastElement);
-            }
-        }
-    }
-
-    if (value != "<description></description>"_L1)
-        result.second = value;
-
-    return result;
+    const auto briefStart = value->indexOf(briefStartElement);
+    if (briefStart < 0)
+        return {};
+    const auto briefEnd = value->indexOf(briefEndElement,
+                                         briefStart + briefStartElement.size());
+    if (briefEnd < briefStart)
+        return {};
+    const auto briefLength = briefEnd + briefEndElement.size() - briefStart;
+    QString briefValue = value->mid(briefStart, briefLength);
+    briefValue.insert(briefValue.size() - briefEndElement.size(),
+                      u"<rst> More_...</rst>"_s);
+    value->remove(briefStart, briefLength);
+    return briefValue;
 }
 
 // Apply the documentation parsed from WebXML to a AbstractMetaFunction and complete argument
@@ -422,12 +408,13 @@ QString QtDocParser::fillDocumentation(const AbstractMetaClassPtr &metaClass)
         qCWarning(lcShibokenDoc, "%s",
                   qPrintable(msgCannotFindDocumentation(sourceFileName, "class", className, {})));
     }
-    const auto descriptionPair = extractBrief(docString);
+    const QString brief = extractBrief(&docString);
 
     Documentation doc;
     doc.setSourceFile(sourceFileName);
-    doc.setValue(descriptionPair.first, DocumentationType::Brief);
-    doc.setValue(descriptionPair.second, DocumentationType::Detailed);
+    if (!brief.isEmpty())
+        doc.setValue(brief, DocumentationType::Brief);
+    doc.setValue(docString);
     metaClass->setDocumentation(doc);
 
     //Functions Documentation
@@ -497,23 +484,6 @@ static QString qmlReferenceLink(const QFileInfo &qmlModuleFi)
         + u'/' + qmlModuleFi.baseName() + ".html"_L1;
 }
 
-// Find a webxml file containing QML types. Note: These files are empty;
-// we need to point to the web docs.
-static std::optional<QFileInfo> qmlModuleFile(const QString &dirPath,
-                                              const QString &lowerModuleName)
-{
-    static constexpr auto postFix = "-qmlmodule.webxml"_L1;
-    const QFileInfo moduleFile(dirPath + u'/' + lowerModuleName + postFix);
-    if (moduleFile.exists())
-        return moduleFile;
-    // Some file names are irregular, fall back to using a filter
-    const QFileInfoList qmlModuleFiles =
-        QDir(dirPath).entryInfoList({u'*' + postFix}, QDir::Files);
-    if (!qmlModuleFiles.isEmpty())
-        return qmlModuleFiles.constFirst();
-    return std::nullopt;
-}
-
 ModuleDocumentation QtDocParser::retrieveModuleDocumentation(const QString &name)
 {
     // TODO: This method of acquiring the module name supposes that the target language uses
@@ -548,8 +518,11 @@ ModuleDocumentation QtDocParser::retrieveModuleDocumentation(const QString &name
     ModuleDocumentation result{Documentation{docString, {}, sourceFile}, {}};
 
     // If a QML module info file exists, insert a link to the Qt docs.
+    // Use a filter as some file names are irregular.
     // Note: These files are empty; we need to point to the web docs.
-    if (const auto qmlModuleFileO = qmlModuleFile(dirPath, lowerModuleName))
-        result.qmlTypesUrl = qmlReferenceLink(qmlModuleFileO.value());
+    const QFileInfoList qmlModuleFiles =
+        QDir(dirPath).entryInfoList({"*-qmlmodule.webxml"_L1}, QDir::Files);
+    if (!qmlModuleFiles.isEmpty())
+        result.qmlTypesUrl = qmlReferenceLink(qmlModuleFiles.constFirst());
     return result;
 }

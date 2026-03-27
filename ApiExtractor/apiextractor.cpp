@@ -370,6 +370,7 @@ bool ApiExtractorPrivate::runHelper(ApiExtractorFlags flags)
 
     bool addCompilerSupportArguments = true;
     if (clangOptionsSize > 0) {
+        clang::setTargetTriple(m_clangOptions);
         qsizetype i = 0;
         if (m_clangOptions.at(i) == u"-") {
             ++i;
@@ -613,8 +614,8 @@ ApiExtractorPrivate::addInstantiatedContainersAndSmartPointers(InstantiationColl
     if (type.hasTemplateChildren()) {
         const auto piece = isContainer ? "container"_L1 : "smart pointer"_L1;
         QString warning =
-            "Skipping instantiation of %1 '%2' because it has template"
-            " arguments."_L1.arg(piece, type.originalTypeDescription());
+            QString::fromLatin1("Skipping instantiation of %1 '%2' because it has template"
+                                " arguments.").arg(piece, type.originalTypeDescription());
         if (!contextName.isEmpty())
             warning.append(" Calling context: "_L1 + contextName);
 

@@ -13,8 +13,6 @@
 #include <optional>
 #include <utility>
 
-// Opaque container helpers
-
 extern "C"
 {
 struct LIBSHIBOKEN_API ShibokenContainer
@@ -50,35 +48,8 @@ public:
     enum { value = sizeof(test<T>(nullptr)) == sizeof(YesType) };
 };
 
-// PYSIDE-3259 Handling of the std::vector<bool> optimization for providing
-// a pointer for the SbkConverter. Use const-ref for the standard case to
-// avoid copies and instantiate a bool in case of std::vector<bool>.
-template <typename T>
-struct ShibokenContainerStdVectorValueType
-{
-    using Type = const T &;
-};
-
-template <>
-struct ShibokenContainerStdVectorValueType<bool>
-{
-    using Type = bool;
-};
-
-class ShibokenSequenceContainerPrivateBase
-{
-public:
-    static constexpr const char *msgModifyConstContainer =
-        "Attempt to modify a constant container.";
-
-protected:
-    LIBSHIBOKEN_API static ShibokenContainer *allocContainer(PyTypeObject *subtype);
-    LIBSHIBOKEN_API static void freeSelf(PyObject *pySelf);
-};
-
-// Helper for sequence type containers
 template <class SequenceContainer>
-class ShibokenSequenceContainerPrivate : public ShibokenSequenceContainerPrivateBase
+class ShibokenSequenceContainerPrivate // Helper for sequence type containers
 {
 public:
     using value_type = typename SequenceContainer::value_type;
@@ -87,10 +58,13 @@ public:
     SequenceContainer *m_list{};
     bool m_ownsList = false;
     bool m_const = false;
+    static constexpr const char *msgModifyConstContainer =
+        "Attempt to modify a constant container.";
 
     static PyObject *tpNew(PyTypeObject *subtype, PyObject * /* args */, PyObject * /* kwds */)
     {
-        auto *me = allocContainer(subtype);
+        allocfunc allocFunc = reinterpret_cast<allocfunc>(PepType_GetSlot(subtype, Py_tp_alloc));
+        auto *me = reinterpret_cast<ShibokenContainer *>(allocFunc(subtype, 0));
         auto *d = new ShibokenSequenceContainerPrivate;
         d->m_list = new SequenceContainer;
         d->m_ownsList = true;
@@ -117,7 +91,9 @@ public:
         if (d->m_ownsList)
             delete d->m_list;
         delete d;
-        freeSelf(pySelf);
+        auto freeFunc = reinterpret_cast<freefunc>(PepType_GetSlot(Py_TYPE(pySelf)->tp_base,
+                                                                   Py_tp_free));
+        freeFunc(self);
     }
 
     static Py_ssize_t sqLen(PyObject *self)

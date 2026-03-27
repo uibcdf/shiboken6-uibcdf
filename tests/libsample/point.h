@@ -71,4 +71,6 @@ LIBSAMPLE_API bool operator!(const Point &pt);
 LIBSAMPLE_API Complex transmutePointIntoComplex(const Point &point);
 LIBSAMPLE_API Point transmuteComplexIntoPoint(const Complex &cpx);
 
+LIBSAMPLE_API Point operator*(const Point &pt, double multiplier);
+
 #endif // POINT_H

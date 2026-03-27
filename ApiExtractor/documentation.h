@@ -29,7 +29,6 @@ public:
 
     bool equals(const Documentation &rhs) const;
 
-    bool hasDetailed() const { return !m_detailed.isEmpty(); }
     const QString &detailed() const { return m_detailed; }
     void setDetailed(const QString &detailed);
 
