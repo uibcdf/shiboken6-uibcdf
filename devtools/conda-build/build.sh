@@ -16,7 +16,7 @@ if [ ! -f "$MANIFEST" ]; then
     exit 1
 fi
 
-mkdir -p "$SP_DIR/shiboken6" "$SP_DIR/shiboken6-6.9.2.dist-info"
+mkdir -p "$SP_DIR/shiboken6_uibcdf" "$SP_DIR/shiboken6_uibcdf-6.9.2.dist-info"
 
 while IFS= read -r relpath; do
     [ -n "$relpath" ] || continue
@@ -27,7 +27,10 @@ while IFS= read -r relpath; do
             ;;&
     esac
     src="$SOURCE_SITE_PACKAGES/$relpath"
-    dst="$SP_DIR/$relpath"
+    rewritten_relpath="${relpath/shiboken6\//shiboken6_uibcdf/}"
+    rewritten_relpath="${rewritten_relpath/shiboken6-6.9.2.dist-info/pyside_placeholder}"
+    rewritten_relpath="${rewritten_relpath/pyside_placeholder/shiboken6_uibcdf-6.9.2.dist-info}"
+    dst="$SP_DIR/$rewritten_relpath"
 
     if [ ! -e "$src" ]; then
         echo "Missing manifest entry in source environment: $src" >&2

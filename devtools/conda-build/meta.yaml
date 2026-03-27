@@ -16,9 +16,9 @@ requirements:
 
 test:
   commands:
-    - test -f "$SP_DIR/shiboken6/Shiboken.abi3.so"
-    - test -f "$SP_DIR/shiboken6/libshiboken6.abi3.so.6.9"
-    - python -c "import shiboken6; print(shiboken6.__file__)"
+    - test -f "$SP_DIR/shiboken6_uibcdf/Shiboken.abi3.so"
+    - test -f "$SP_DIR/shiboken6_uibcdf/libshiboken6.abi3.so.6.9"
+    - python -c "import shiboken6_uibcdf; print(shiboken6_uibcdf.__file__)"
 
 about:
   summary: "Experimental UIBCDF-aligned shiboken6 package for Linux/Python 3.13."
