@@ -27,7 +27,7 @@ struct SbkEnumType
 // Initialization
 static bool _init_enum()
 {
-    AutoDecRef shibo(PyImport_ImportModule("shiboken6.Shiboken"));
+    AutoDecRef shibo(PyImport_ImportModule("shiboken6_uibcdf.Shiboken"));
     return !shibo.isNull();
 }
 

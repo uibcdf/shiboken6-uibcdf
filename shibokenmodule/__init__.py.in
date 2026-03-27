@@ -24,4 +24,4 @@ import keyword
 import functools
 import typing
 
-from shiboken6.Shiboken import *
+from shiboken6_uibcdf.Shiboken import *

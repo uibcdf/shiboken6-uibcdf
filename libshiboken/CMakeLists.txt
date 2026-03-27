@@ -3,6 +3,8 @@
 
 project(libshiboken)
 
+set(SHIBOKEN_UIBCDF_PYTHON_PACKAGE "shiboken6_uibcdf")
+
 option(ENABLE_VERSION_SUFFIX "Used to use current version in suffix to generated files. This is used to allow multiples versions installed simultaneous." FALSE)
 if(ENABLE_VERSION_SUFFIX)
     set(shiboken6_SUFFIX "-${shiboken_MAJOR_VERSION}.${shiboken_MINOR_VERSION}")
@@ -111,7 +113,7 @@ add_library(Shiboken6::libshiboken ALIAS libshiboken)
 target_include_directories(libshiboken PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-  $<INSTALL_INTERFACE:shiboken6/include>
+  $<INSTALL_INTERFACE:${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}/include>
 )
 
 if (NOT "${NUMPY_INCLUDE_DIR}" STREQUAL "")
@@ -197,7 +199,7 @@ install(FILES
         signature.h
         signature_p.h
 
-        DESTINATION shiboken6${shiboken6_SUFFIX}/include)
+        DESTINATION ${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}${shiboken6_SUFFIX}/include)
 install(TARGETS libshiboken EXPORT Shiboken6Targets
                             LIBRARY DESTINATION "${LIB_INSTALL_DIR}"
                             ARCHIVE DESTINATION "${LIB_INSTALL_DIR}"
@@ -212,9 +214,9 @@ if(NOT is_pyside6_superproject_build)
         VERSION ${libshiboken_SOVERSION})
 
     install(TARGETS libshiboken EXPORT Shiboken6WheelTargets
-            LIBRARY DESTINATION "shiboken6"
-            ARCHIVE DESTINATION "shiboken6"
-            RUNTIME DESTINATION "shiboken6")
+            LIBRARY DESTINATION "${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}"
+            ARCHIVE DESTINATION "${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}"
+            RUNTIME DESTINATION "${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}")
 
     install(EXPORT Shiboken6WheelTargets
             NAMESPACE Shiboken6::

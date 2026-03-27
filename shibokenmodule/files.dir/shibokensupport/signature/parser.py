@@ -44,7 +44,7 @@ In effect, 'type_map' maps text to real Python objects.
 
 
 def _get_flag_enum_option():
-    from shiboken6 import (__version_info__ as ver,  # noqa F:401
+    from shiboken6_uibcdf import (__version_info__ as ver,  # noqa F:401
                            __minimum_python_version__ as pyminver,
                            __maximum_python_version__ as pymaxver)
 

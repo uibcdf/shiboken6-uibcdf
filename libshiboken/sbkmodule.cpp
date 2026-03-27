@@ -340,7 +340,7 @@ static bool isImportStar(PyObject *module)
 static std::unordered_set<std::string> dontLazyLoad;
 
 static const std::unordered_set<std::string> knownModules{
-    "shiboken6.Shiboken",
+    "shiboken6_uibcdf.Shiboken",
     "minimal",
     "other",
     "sample",
@@ -363,7 +363,7 @@ static bool shouldLazyLoad(PyObject *module)
 
     if (knownModules.find(modName) != knownModules.end())
         return true;
-    return std::strncmp(modName, "PySide6.", 8) == 0;
+    return std::strncmp(modName, "PySide6_uibcdf.", 15) == 0;
 }
 
 static int lazyLoadDefault()

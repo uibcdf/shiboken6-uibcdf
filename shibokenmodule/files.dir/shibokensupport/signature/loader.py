@@ -97,26 +97,30 @@ def put_into_package(package, module, override=None):
     sys.modules[fullname] = module
 
 
+PYSIDE_PACKAGE_NAME = "PySide6_uibcdf"
+
+
 def move_into_pyside_package():
     import shibokensupport
-    import PySide6
+    pyside_package = __import__(PYSIDE_PACKAGE_NAME)
     try:
-        import PySide6.support
+        __import__(f"{PYSIDE_PACKAGE_NAME}.support")
     except ModuleNotFoundError:
         # This can happen in the embedding case.
-        put_into_package(PySide6, shibokensupport, "support")
+        put_into_package(pyside_package, shibokensupport, "support")
+    pyside_support = sys.modules[f"{PYSIDE_PACKAGE_NAME}.support"]
     if not is_pypy:
-        put_into_package(PySide6.support, feature)
-    put_into_package(PySide6.support, signature)
-    put_into_package(PySide6.support.signature, mapping)
-    put_into_package(PySide6.support.signature, errorhandler)
-    put_into_package(PySide6.support.signature, layout)
-    put_into_package(PySide6.support.signature, lib)
-    put_into_package(PySide6.support.signature, parser)
-    put_into_package(PySide6.support.signature, importhandler)
-    put_into_package(PySide6.support.signature.lib, enum_sig)
-    put_into_package(PySide6.support.signature.lib, pyi_generator)
-    put_into_package(PySide6.support.signature.lib, tool)
+        put_into_package(pyside_support, feature)
+    put_into_package(pyside_support, signature)
+    put_into_package(pyside_support.signature, mapping)
+    put_into_package(pyside_support.signature, errorhandler)
+    put_into_package(pyside_support.signature, layout)
+    put_into_package(pyside_support.signature, lib)
+    put_into_package(pyside_support.signature, parser)
+    put_into_package(pyside_support.signature, importhandler)
+    put_into_package(pyside_support.signature.lib, enum_sig)
+    put_into_package(pyside_support.signature.lib, pyi_generator)
+    put_into_package(pyside_support.signature.lib, tool)
 
 
 from shibokensupport.signature import mapping
@@ -133,14 +137,14 @@ import enum
 
 post_init = lambda: None  # noqa E:731 default
 
-if "PySide6" in sys.modules:
-    # We publish everything under "PySide6.support", again.
+if PYSIDE_PACKAGE_NAME in sys.modules:
+    # We publish everything under the suffixed package support tree, again.
     move_into_pyside_package()
     # PYSIDE-1502: Make sure that support can be imported.
     try:
-        import PySide6.support
+        __import__(f"{PYSIDE_PACKAGE_NAME}.support")
     except ModuleNotFoundError:
-        print("PySide6.support could not be imported. "
+        print(f"{PYSIDE_PACKAGE_NAME}.support could not be imported. "
               "This is a serious configuration error.", file=sys.stderr)
         raise
 
@@ -152,8 +156,8 @@ if "PySide6" in sys.modules:
         # PYSIDE-1019: Modify `__import__` to be `__feature__` aware.
         if not is_pypy:
             # PYSIDE-535: Cannot enable __feature__ for various reasons.
-            import PySide6.support.feature
-            sys.modules["__feature__"] = PySide6.support.feature
+            __import__(f"{PYSIDE_PACKAGE_NAME}.support.feature")
+            sys.modules["__feature__"] = sys.modules[f"{PYSIDE_PACKAGE_NAME}.support.feature"]
             builtins.__orig_import__ = builtins.__import__
             builtins.__import__ = builtins.__feature_import__
 

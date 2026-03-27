@@ -3,6 +3,8 @@
 
 project(shibokenmodule)
 
+set(SHIBOKEN_UIBCDF_PYTHON_PACKAGE "shiboken6_uibcdf")
+
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/shibokenmodule.txt.in"
                "${CMAKE_CURRENT_BINARY_DIR}/shibokenmodule.txt" @ONLY)
 
@@ -44,12 +46,12 @@ create_generator_target(shibokenmodule)
 
 qfp_strip_library("shibokenmodule")
 
-install(TARGETS shibokenmodule DESTINATION ${PYTHON_SITE_PACKAGES}/shiboken6)
+install(TARGETS shibokenmodule DESTINATION ${PYTHON_SITE_PACKAGES}/${SHIBOKEN_UIBCDF_PYTHON_PACKAGE})
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/_config.py.in"
                "${CMAKE_CURRENT_BINARY_DIR}/_config.py" @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/_config.py"
-        DESTINATION "${PYTHON_SITE_PACKAGES}/shiboken6")
+        DESTINATION "${PYTHON_SITE_PACKAGES}/${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}")
 
 if ("${MINIMUM_PYTHON_VERSION}" STREQUAL "")
     set(MINIMUM_PYTHON_VERSION None)
@@ -67,11 +69,11 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/py.typed.in"
                "${CMAKE_CURRENT_BINARY_DIR}/../py.typed" @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/../Shiboken.pyi"
               "${CMAKE_CURRENT_BINARY_DIR}/../py.typed"
-        DESTINATION "${PYTHON_SITE_PACKAGES}/shiboken6")
+        DESTINATION "${PYTHON_SITE_PACKAGES}/${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}")
 
 # PYSIDE-1497: This `..` is the crucial trick to unify the path location of `Shiboken`.
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/../__init__.py"
-       DESTINATION "${PYTHON_SITE_PACKAGES}/shiboken6")
+       DESTINATION "${PYTHON_SITE_PACKAGES}/${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}")
 
 # Use absolute path instead of relative path, to avoid ninja build errors due to
 # duplicate file dependency inconsistency.
@@ -81,4 +83,4 @@ configure_file("${shiboken_version_path}"
                "${CMAKE_CURRENT_BINARY_DIR}/_git_shiboken_module_version.py" @ONLY)
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/_git_shiboken_module_version.py"
-        DESTINATION "${PYTHON_SITE_PACKAGES}/shiboken6")
+        DESTINATION "${PYTHON_SITE_PACKAGES}/${SHIBOKEN_UIBCDF_PYTHON_PACKAGE}")

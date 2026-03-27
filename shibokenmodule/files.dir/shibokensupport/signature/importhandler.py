@@ -14,11 +14,11 @@ because the implementation of deprecated functions should be visible
 to the users (in the hope they don't use it any longer <wink>).
 
 As a first approach, the function finish_import redirects to
-PySide6/support/deprecated.py . There can come other extensions as well.
+PySide6_uibcdf/support/deprecated.py . There can come other extensions as well.
 """
 
 try:
-    from PySide6.support import deprecated
+    from PySide6_uibcdf.support import deprecated
     have_deprecated = True
 except ImportError:
     have_deprecated = False
@@ -26,7 +26,7 @@ except ImportError:
 
 # called by loader.py from signature.cpp
 def finish_import(module):
-    if have_deprecated and module.__name__.startswith("PySide6."):
+    if have_deprecated and module.__name__.startswith("PySide6_uibcdf."):
         try:
             name = "fix_for_" + module.__name__.split(".")[1]
             func = getattr(deprecated, name, None)
