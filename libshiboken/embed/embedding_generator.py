@@ -32,22 +32,31 @@ from pathlib import Path
 work_dir = Path(__file__).parent.resolve()
 embed_dir = work_dir
 cur_dir = Path.cwd()
-repo_root = work_dir.parents[2]
 
-# Support both the upstream pyside-setup monorepo layout:
-#   <root>/sources/shiboken6/...
-# and the split UIBCDF repo layout:
-#   <root>/...
-if repo_root.name == "sources":
-    source_dir = repo_root
-    build_script_dir = repo_root.parent
-    shiboken_support_root = source_dir / "shiboken6"
-else:
-    source_dir = repo_root
-    build_script_dir = repo_root
-    shiboken_support_root = repo_root
 
-assert (build_script_dir / "build_scripts").exists()
+def _detect_layout(embed_path: Path):
+    # Upstream monorepo:
+    #   <root>/sources/shiboken6/libshiboken/embed
+    monorepo_sources = embed_path.parents[2]
+    if monorepo_sources.name == "shiboken6" and monorepo_sources.parent.name == "sources":
+        source_dir = monorepo_sources.parent
+        build_script_dir = source_dir.parent
+        shiboken_support_root = monorepo_sources
+        return source_dir, build_script_dir, shiboken_support_root
+
+    # Split repo:
+    #   <repo>/libshiboken/embed
+    split_repo_root = embed_path.parents[1]
+    if (split_repo_root / "build_scripts").exists() and (split_repo_root / "shibokenmodule").exists():
+        source_dir = split_repo_root
+        build_script_dir = split_repo_root
+        shiboken_support_root = split_repo_root
+        return source_dir, build_script_dir, shiboken_support_root
+
+    raise AssertionError(f"Could not detect shiboken source layout from {embed_path}")
+
+
+source_dir, build_script_dir, shiboken_support_root = _detect_layout(work_dir)
 
 sys.path.insert(0, os.fspath(build_script_dir))
 
