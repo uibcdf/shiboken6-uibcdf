@@ -150,6 +150,23 @@ The current remaining blocker is much narrower:
 - the recipe and tests must stay aligned with the actual `6.10.2` source line
 - not with the old bootstrap expectation of `libshiboken6.abi3.so.6.9`
 
+That blocker is now closed too:
+
+- `devtools/conda-build/meta.yaml` now tests for
+  `shiboken6_uibcdf/libshiboken6.abi3.so.6.10`
+- the test had to be corrected to look for that shared library under
+  `$PREFIX/shiboken6_uibcdf/`, not inside `site-packages/`
+- with that adjustment, `conda build ../../devtools/conda-build` now completes
+  successfully for:
+  - `shiboken6-uibcdf-6.10.2-py313h3fd9d12_0.conda`
+
+So the repo has now crossed the first packaging threshold:
+
+- a true source-built `_uibcdf` package exists
+- it installs and imports successfully under test
+- and the work can move on to `pyside6-essentials-uibcdf` from a much stronger
+  base
+
 The relevant source-side hook is:
 
 - `libshiboken/embed/signature_bootstrap.py`
