@@ -32,9 +32,21 @@ from pathlib import Path
 work_dir = Path(__file__).parent.resolve()
 embed_dir = work_dir
 cur_dir = Path.cwd()
-source_dir = work_dir.parents[2]
-assert source_dir.name == "sources"
-build_script_dir = work_dir.parents[3]
+repo_root = work_dir.parents[2]
+
+# Support both the upstream pyside-setup monorepo layout:
+#   <root>/sources/shiboken6/...
+# and the split UIBCDF repo layout:
+#   <root>/...
+if repo_root.name == "sources":
+    source_dir = repo_root
+    build_script_dir = repo_root.parent
+    shiboken_support_root = source_dir / "shiboken6"
+else:
+    source_dir = repo_root
+    build_script_dir = repo_root
+    shiboken_support_root = repo_root
+
 assert (build_script_dir / "build_scripts").exists()
 
 sys.path.insert(0, os.fspath(build_script_dir))
@@ -69,7 +81,7 @@ def create_zipfile(use_pyc, quiet):
     # We copy every Python file into this dir, but only for the right version.
     # For testing in the source dir, we need to filter.
     ignore = []
-    utils.copydir(source_dir / "shiboken6" / "shibokenmodule" / "files.dir" / "shibokensupport",
+    utils.copydir(shiboken_support_root / "shibokenmodule" / "files.dir" / "shibokensupport",
                   work_dir / "shibokensupport",
                   ignore=ignore, file_filter_function=lambda name, n2: name.endswith(".py"))
     if embed_dir != work_dir:
