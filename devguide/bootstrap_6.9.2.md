@@ -70,16 +70,27 @@ The runtime-critical files are:
 
 ## Current Packaging Decision
 
-Current first-pass packaging is manifest-driven.
+Current packaging has two phases.
 
-That means:
+### Phase 1: Manifest-Driven Boundary Discovery
 
 - `devtools/conda-build/build.sh` copies the vendored `shiboken6` boundary
   from `package_boundary/site-packages` into `$SP_DIR` by default
 - the source environment can be overridden with:
   - `SHIBOKEN6_UIBCDF_SOURCE_PREFIX`
-- this is intentionally a boundary-finding step before a more source-build-led
-  recipe is attempted
+
+This phase made the validated runtime boundary explicit and reproducible.
+
+### Phase 2: Source-Build-Led Namespace Split
+
+For coexistence with native `shiboken6`, Phase 1 is not sufficient.
+The package now needs a true source rebuild so that embedded runtime helpers
+also speak the suffixed namespace:
+
+- `shiboken6_uibcdf`
+
+The boundary and manifests are still useful evidence, but the final namespace
+split can no longer be completed only by rewriting staged Python files.
 
 ## Why We Chose This First Step
 
@@ -90,16 +101,47 @@ This first step answers a narrow but important question:
   layers?
 
 It also gives a small package where the runtime payload is easy to inspect.
+That decision was still correct even though it did not finish the final
+namespace split by itself.
 
 ## Current Validation
 
-A local non-conda smoke validation has already passed for this repo:
+Validation has happened at two levels.
+
+### Boundary Repackaging Validation
+
+A local non-conda smoke validation passed for the original boundary:
 
 - `build.sh` staged the manifest-listed files into a temporary `site-packages`
 - `import shiboken6` worked from that staged boundary
 
-At the time this note was written, `conda-build` itself was not available in
-the active shell, so a true `conda build` run still needs to be performed.
+That proved the runtime boundary itself was packageable under the canonical
+namespace.
+
+### Suffixed Namespace Validation
+
+The current target is:
+
+- `shiboken6_uibcdf`
+
+The first true `conda build` attempt for that suffixed namespace reached the
+test phase and proved that:
+
+- the staged layout can be rewritten to `shiboken6_uibcdf/`
+- `__init__.py` can be rewritten away from `shiboken6.Shiboken`
+
+But the test still failed during import because `Shiboken.abi3.so` embeds a
+signature bootstrap that still imports canonical `shiboken6`.
+
+The relevant source-side hook is:
+
+- `libshiboken/embed/signature_bootstrap.py`
+
+So the current conclusion is:
+
+- simple repackaging of the validated boundary is not enough to finish the
+  `_uibcdf` namespace split
+- a true source rebuild is required for `shiboken6-uibcdf`
 
 ## Relationship To The Other Two Repos
 
@@ -124,8 +166,11 @@ exact version branch you decide to support.
 5. Update `devtools/conda-build/meta.yaml` version pins and runtime tests.
 6. Update `devtools/conda-build/build.sh` if the installed layout changed.
 7. Run a temporary `site-packages` smoke check.
-8. Run real `conda build` once `conda-build` is available.
-9. Only after that, move on to the matching `Essentials` and `Addons` repos.
+8. Run real `conda build`.
+9. If the target is a suffixed coexistence namespace, continue until the
+   source rebuild also removes embedded canonical imports such as those in
+   `signature_bootstrap.py`.
+10. Only after that, move on to the matching `Essentials` and `Addons` repos.
 
 ## Things To Keep Stable
 
