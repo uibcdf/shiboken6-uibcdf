@@ -40,3 +40,8 @@ while IFS= read -r relpath; do
     mkdir -p "$(dirname "$dst")"
     cp -a "$src" "$dst"
 done < "$MANIFEST"
+
+init_py="$SP_DIR/shiboken6_uibcdf/__init__.py"
+if [ -f "$init_py" ]; then
+    perl -0pi -e 's/from shiboken6\.Shiboken import \*/from shiboken6_uibcdf.Shiboken import */g' "$init_py"
+fi
