@@ -232,6 +232,43 @@ fullNames directly, eliminating the runtime remap entirely.
 5. Inspect the string with `x/s <addr>`. That string tells you which type's lazy init failed.
 6. Check if `sys.modules` would contain the module name extracted from that fullName.
 
+## Second Runtime Bug Fixed (2026-04-02)
+
+### `Module::import`: same "PySide6." prefix problem
+
+**Symptom:** `import PySide6_uibcdf.QtGui` raised:
+```
+ImportError: could not import module 'PySide6.QtCore'
+```
+even though `import PySide6_uibcdf.QtCore` worked fine.
+
+**Root cause:** `Shiboken::Module::import(const char *moduleName)` in
+`libshiboken/sbkmodule.cpp` is called when a module loads its dependencies
+(e.g. QtGui needs QtCore). The generated module init passes `"PySide6.QtCore"`
+as the module name. `Module::import` calls `PyImport_ImportModule("PySide6.QtCore")`,
+which fails because the installed package is `PySide6_uibcdf.QtCore`.
+
+The previous fix patched only `Module::get` (type lookup slow path). This function
+(`Module::import`) is a separate entry point that also needed the same remap.
+
+**Fix applied** (`libshiboken/sbkmodule.cpp`, commit 4e60fb6):
+```c++
+PyObject *import(const char *moduleName)
+{
+    // UIBCDF patch: generated code requests "PySide6.X" but our package is "PySide6_uibcdf.X"
+    std::string remapped;
+    const char *resolvedName = moduleName;
+    std::string_view nameView(moduleName);
+    if (nameView.compare(0, 8, "PySide6.") == 0 && nameView.compare(0, 15, "PySide6_uibcdf.") != 0) {
+        remapped = "PySide6_uibcdf" + std::string(nameView.substr(7));
+        resolvedName = remapped.c_str();
+    }
+    // ... rest of function uses resolvedName
+```
+
+**When upgrading to 6.10.x**: check that BOTH `Module::get` AND `Module::import`
+still have the remap. Upstream may have refactored either or both functions.
+
 ## Things To Keep Stable
 
 - keep the repo version line aligned with the family version
@@ -239,4 +276,4 @@ fullNames directly, eliminating the runtime remap entirely.
 - treat this repo as one member of a family, not as a standalone decision
 - keep this document updated when the recipe or source boundary changes
 - **when upgrading to 6.10.x**: re-check `libshiboken/sbkmodule.cpp` to confirm
-  the "PySide6." remap is still present, especially if upstream changed `Module::get`
+  the "PySide6." remap is present in **both** `Module::get` AND `Module::import`
