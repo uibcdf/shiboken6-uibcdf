@@ -172,9 +172,71 @@ exact version branch you decide to support.
    `signature_bootstrap.py`.
 10. Only after that, move on to the matching `Essentials` and `Addons` repos.
 
+## Critical Runtime Bug Fixed (2026-04-01)
+
+### `Module::get` slow path: "PySide6." vs "PySide6_uibcdf." prefix mismatch
+
+**Symptom:** `import PySide6_uibcdf.QtCore` segfaults with:
+```
+PyTuple_Pack(n=1) ← crash
+init_SomeType (in QtCore.abi3.so)   ← calls PyTuple_Pack(1, base_type)
+libshiboken (incarnate lazy init)
+PyObject_GetAttrString
+init_SomeTypeStaticFields
+PyInit_QtCore
+```
+
+**Root cause:** `Shiboken::Module::get(TypeInitStruct &typeStruct)` in
+`libshiboken/sbkmodule.cpp` has a slow path that triggers when a type is first
+needed (lazy initialization). It looks up the module from `sys.modules` using
+the `fullName` field of the struct (e.g. `"PySide6.QtCore.QOperatingSystemVersionBase"`).
+
+The slow path code was patched to check for `"PySide6_uibcdf."` prefix:
+```c++
+const bool usePySide = names.compare(0, 15, "PySide6_uibcdf.") == 0;
+auto dotPos = usePySide ? names.find('.', 15) : names.find('.');
+```
+
+But the shiboken **generator** still emits `"PySide6.*"` fullNames in the
+generated code (taken from the `package="PySide6.QtCore"` attribute in
+typesystem XML files). So `usePySide = false` → `dotPos = 8` →
+`modName = "PySide6"` → `PyDict_GetItem(sys.modules, "PySide6")` → **NULL**
+→ returns NULL → `PyTuple_Pack(1, NULL)` → **SIGSEGV**.
+
+**Fix applied** (`libshiboken/sbkmodule.cpp`, commit 14d0fd0):
+```c++
+// Remap "PySide6." → "PySide6_uibcdf." before the sys.modules lookup.
+std::string remappedNames;
+if (names.compare(0, 8, "PySide6.") == 0 && names.compare(0, 15, "PySide6_uibcdf.") != 0) {
+    remappedNames = "PySide6_uibcdf" + std::string(names.substr(7));
+    names = remappedNames;
+}
+const bool usePySide = names.compare(0, 15, "PySide6_uibcdf.") == 0;
+```
+
+This remapping is **unconditional and exclusive**: any `"PySide6.*"` name is
+always rewritten to `"PySide6_uibcdf.*"`. It never falls back to the standard
+`PySide6` package, so having both PySide6 and PySide6_uibcdf installed in the
+same env is safe.
+
+**Long-term ideal fix (not yet done):** Change `package="PySide6.QtCore"` to
+`package="PySide6_uibcdf.QtCore"` in all typesystem XML files in
+`pyside6-essentials-uibcdf`. That would make the generator emit correct
+fullNames directly, eliminating the runtime remap entirely.
+
+**How to debug similar crashes in future versions:**
+1. Run `gdb --batch -ex run -ex bt --args python -c "import PySide6_uibcdf.QtCore"`.
+2. Look for `PyTuple_Pack(n=...)` at frame 0 and `PyInit_*` near the bottom.
+3. Get the crash address in the .so (`info sharedlibrary` for base, then compute offset).
+4. Disassemble to find the `lea ... %rsi` instruction that loads the fullName string.
+5. Inspect the string with `x/s <addr>`. That string tells you which type's lazy init failed.
+6. Check if `sys.modules` would contain the module name extracted from that fullName.
+
 ## Things To Keep Stable
 
 - keep the repo version line aligned with the family version
 - do not silently mix payloads from different Qt-for-Python versions
 - treat this repo as one member of a family, not as a standalone decision
 - keep this document updated when the recipe or source boundary changes
+- **when upgrading to 6.10.x**: re-check `libshiboken/sbkmodule.cpp` to confirm
+  the "PySide6." remap is still present, especially if upstream changed `Module::get`
