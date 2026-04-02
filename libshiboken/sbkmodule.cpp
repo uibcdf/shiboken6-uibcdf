@@ -457,15 +457,24 @@ void AddTypeCreationFunction(PyObject *module,
 
 PyObject *import(const char *moduleName)
 {
+    // UIBCDF patch: generated code requests "PySide6.X" but our package is "PySide6_uibcdf.X"
+    std::string remapped;
+    const char *resolvedName = moduleName;
+    std::string_view nameView(moduleName);
+    if (nameView.compare(0, 8, "PySide6.") == 0 && nameView.compare(0, 15, "PySide6_uibcdf.") != 0) {
+        remapped = "PySide6_uibcdf" + std::string(nameView.substr(7));
+        resolvedName = remapped.c_str();
+    }
+
     PyObject *sysModules = PyImport_GetModuleDict();
-    PyObject *module = PyDict_GetItemString(sysModules, moduleName);
+    PyObject *module = PyDict_GetItemString(sysModules, resolvedName);
     if (module != nullptr)
         Py_INCREF(module);
     else
-        module = PyImport_ImportModule(moduleName);
+        module = PyImport_ImportModule(resolvedName);
 
     if (module == nullptr)
-        PyErr_Format(PyExc_ImportError, "could not import module '%s'", moduleName);
+        PyErr_Format(PyExc_ImportError, "could not import module '%s'", resolvedName);
 
     return module;
 }
