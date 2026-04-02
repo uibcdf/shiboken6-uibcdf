@@ -56,6 +56,14 @@ LIBSHIBOKEN_API PyTypeObject *get(TypeInitStruct &typeStruct)
     // As soon as types[index] gets filled, we can stop.
 
     std::string_view names(typeStruct.fullName);
+    // UIBCDF patch: the generated binding code uses "PySide6." as the fullName prefix,
+    // but our package is "PySide6_uibcdf." in sys.modules. Remap at runtime so the
+    // sys.modules lookup below finds our renamed package.
+    std::string remappedNames;
+    if (names.compare(0, 8, "PySide6.") == 0 && names.compare(0, 15, "PySide6_uibcdf.") != 0) {
+        remappedNames = "PySide6_uibcdf" + std::string(names.substr(7));
+        names = remappedNames;
+    }
     const bool usePySide = names.compare(0, 15, "PySide6_uibcdf.") == 0;
     auto dotPos = usePySide ? names.find('.', 15) : names.find('.');
     auto startPos = dotPos + 1;
