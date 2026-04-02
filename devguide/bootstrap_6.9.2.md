@@ -269,6 +269,34 @@ PyObject *import(const char *moduleName)
 **When upgrading to 6.10.x**: check that BOTH `Module::get` AND `Module::import`
 still have the remap. Upstream may have refactored either or both functions.
 
+## Versioning and Build Numbers
+
+The `version` field in `meta.yaml` always tracks the upstream Qt-for-Python
+version (e.g. `6.9.2`). It changes only when the upstream version changes.
+
+The `build.number` field is the mechanism for shipping corrections to the same
+upstream version:
+
+- **Bug in the recipe, in patches, or in the C++ source** (e.g. a new
+  `sbkmodule.cpp` fix): increment `build.number` by 1, keep `version` as-is.
+- **New upstream version** (e.g. 6.10.x): reset `build.number` to 0 and update
+  `version`.
+
+`conda update` / `mamba update` resolves packages by version first, then by
+build number within the same version, so users will automatically receive the
+corrected build when they run an update.
+
+All three packages in the family (`shiboken6-uibcdf`, `pyside6-essentials-uibcdf`,
+`pyside6-addons-uibcdf`) should be released together with the same build number
+whenever a correction touches the shared runtime (e.g. a `libshiboken` patch
+that affects all three).
+
+Upload to the `uibcdf` channel with:
+
+```bash
+anaconda upload <path-to-package.conda> --user uibcdf --channel uibcdf
+```
+
 ## Things To Keep Stable
 
 - keep the repo version line aligned with the family version
