@@ -2348,7 +2348,28 @@ TypeEntryCList AbstractMetaBuilderPrivate::findTypeEntriesHelper(const QString &
     if (!types.isEmpty())
         return types;
 
-    // 6. No? Try looking it up as a flags type
+    // 6. No? Try looking it up as a flags type.
+    // First try scoped lookups (current class and its base classes) so that an
+    // unqualified flags name like "Options" resolves to the correct class's flags
+    // entry (e.g. QFileDialog::Options or QAbstractFileIconProvider::Options)
+    // instead of whichever entry the alphabetical "last hope" fallback happens to
+    // find first.
+    if (currentClass != nullptr
+        && !flags.testFlag(AbstractMetaBuilder::NoClassScopeLookup)) {
+        const QString scopedFlagsName =
+            currentClass->qualifiedCppName() + u"::"_s + qualifiedName;
+        if (auto type = TypeDatabase::instance()->findFlagsType(scopedFlagsName))
+            return {type};
+        if (d && !currentClass->baseClassNames().isEmpty()) {
+            const auto &baseClasses = d->getBaseClasses(currentClass);
+            for (const auto &cls : baseClasses) {
+                const QString baseScopedName =
+                    cls->qualifiedCppName() + u"::"_s + qualifiedName;
+                if (auto type = TypeDatabase::instance()->findFlagsType(baseScopedName))
+                    return {type};
+            }
+        }
+    }
     if (auto type = TypeDatabase::instance()->findFlagsType(qualifiedName))
         return {type};
 
