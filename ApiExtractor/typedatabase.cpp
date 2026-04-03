@@ -830,9 +830,12 @@ FlagsTypeEntryPtr TypeDatabase::findFlagsType(const QString &name) const
         fte = d->m_flagsEntries.value(name);
         if (!fte) {
             //last hope, search for flag without scope  inside of flags hash
+            // Use "::" + name to avoid matching compound names that merely contain
+            // name as a suffix (e.g. "CheckIndexOptions" must not match "Options").
+            const QString scopedName = u"::"_s + name;
             const auto end = d->m_flagsEntries.cend();
             for (auto it = d->m_flagsEntries.cbegin(); it != end; ++it) {
-                if (it.key().endsWith(name)) {
+                if (it.key().endsWith(scopedName)) {
                     fte = it.value();
                     break;
                 }
