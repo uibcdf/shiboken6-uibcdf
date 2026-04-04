@@ -297,6 +297,208 @@ Upload to the `uibcdf` channel with:
 anaconda upload <path-to-package.conda> --user uibcdf --channel uibcdf
 ```
 
+## Enum Disambiguation Fix (2026-04-04)
+
+### Root cause: `findFlagsType` "last hope" matching unqualified names
+
+**Symptom:** `QFileDialog` and `QMessageBox` built with `generate="no"` as workaround, or
+produced incorrect C++ wrappers (`QFlags<QAbstractItemModel::CheckIndexOption>` instead of
+`QFlags<QFileDialog::Option>`).
+
+**Root cause (A) — `typedatabase.cpp` "last hope":**
+`TypeDatabase::findFlagsType` has a fallback loop:
+```cpp
+for (auto it = d->m_flagsEntries.cbegin(); it != end; ++it) {
+    if (it.key().endsWith(name)) { ... }
+}
+```
+`m_flagsEntries` is a `QMap` (alphabetically sorted). When searching for unqualified
+`"Options"`, `"QAbstractItemModel::CheckIndexOptions"` matches because `"CheckIndexOptions"`
+ends with `"Options"`.
+
+**Fix A** (`ApiExtractor/typedatabase.cpp`, commit `1c1d39f`):
+```cpp
+const QString scopedName = u"::"_s + name;
+if (it.key().endsWith(scopedName)) { ... }
+```
+This rejects `"CheckIndexOptions"` (no `"::"` before `"Options"`) but accepts
+`"QFileDialog::Options"` and `"QAbstractFileIconProvider::Options"`.
+
+**Root cause (B) — `abstractmetabuilder.cpp` step 6 missing class scope:**
+`findTypeEntriesHelper` step 6 calls `findFlagsType(qualifiedName)` with an unqualified
+name (e.g. `"Options"`) when processing a class method. Without class context, the "last
+hope" picks the first alphabetical match. `"QAbstractFileIconProvider::Options"` sorts
+before `"QFileDialog::Options"`, so QFileIconProvider's inherited `options()` method also
+gets wrongly typed as `QFileDialog::Option`.
+
+**Fix B** (`ApiExtractor/abstractmetabuilder.cpp`, commit `f0da5b0`):
+Before falling through to the general `findFlagsType(qualifiedName)` at step 6, try:
+1. `findFlagsType(currentClass::qualifiedName)` — exact class match
+2. `findFlagsType(baseClass::qualifiedName)` for each base class — inherited flags
+
+Result:
+- `QFileDialog` + `"Options"` → tries `"QFileDialog::Options"` → direct hit ✓
+- `QFileIconProvider` + `"Options"` → tries `"QFileIconProvider::Options"` (fails) → tries
+  `"QAbstractFileIconProvider::Options"` (base class, direct hit) ✓
+
+**Effect on pyside6-essentials-uibcdf:**
+`DROPPED_ENTRIES` for `QAbstractFileIconProvider.Option` is no longer needed.
+`QFileDialog`, `QMessageBox`, and `QFileIconProvider` all build and import correctly.
+
+**When upgrading to 6.10.x:** both patches are in
+`ApiExtractor/typedatabase.cpp` and `ApiExtractor/abstractmetabuilder.cpp`.
+Verify they are still present after vendoring the new upstream. The "last hope" logic is
+unlikely to change upstream but check.
+
+## Local Build and Upload
+
+### Requirements
+
+Install `anaconda-client` once (can be in the base env):
+```bash
+conda install -c conda-forge anaconda-client
+```
+
+### Build order
+
+Always build in this order — each package depends on the previous:
+
+```bash
+# 1. shiboken6-uibcdf
+cd /path/to/shiboken6-uibcdf
+conda build devtools/conda-build \
+    --channel conda-forge \
+    --channel uibcdf
+
+# 2. pyside6-essentials-uibcdf
+cd /path/to/pyside6-essentials-uibcdf
+conda build devtools/conda-build \
+    --channel conda-forge \
+    --channel uibcdf \
+    --channel local
+
+# 3. pyside6-addons-uibcdf
+cd /path/to/pyside6-addons-uibcdf
+conda build devtools/conda-build \
+    --channel conda-forge \
+    --channel uibcdf \
+    --channel local
+```
+
+`--channel local` makes the freshly-built packages in the conda-bld cache visible
+to the next build without uploading first.
+
+### Install locally for testing
+
+The conda solver can fail on complex envs when given version+build-string specs.
+Use direct file paths instead:
+
+```bash
+conda install -n <env> \
+    /path/to/conda-bld/linux-64/shiboken6-uibcdf-6.9.2-*.conda \
+    /path/to/conda-bld/linux-64/pyside6-essentials-uibcdf-6.9.2-*.conda \
+    /path/to/conda-bld/linux-64/pyside6-addons-uibcdf-6.9.2-*.conda
+```
+
+Or after running `conda index /path/to/conda-bld`:
+```bash
+conda install -n <env> \
+    --channel /path/to/conda-bld \
+    "shiboken6-uibcdf=6.9.2=*_3" \
+    "pyside6-essentials-uibcdf=6.9.2=*_3" \
+    "pyside6-addons-uibcdf=6.9.2=*_3"
+```
+
+### Upload to the uibcdf channel
+
+```bash
+anaconda upload \
+    /path/to/conda-bld/linux-64/shiboken6-uibcdf-6.9.2-*.conda \
+    /path/to/conda-bld/linux-64/pyside6-essentials-uibcdf-6.9.2-*.conda \
+    /path/to/conda-bld/linux-64/pyside6-addons-uibcdf-6.9.2-*.conda \
+    /path/to/conda-bld/linux-64/qt6-positioning-uibcdf-6.9.2-*.conda \
+    /path/to/conda-bld/linux-64/qt6-webengine-uibcdf-6.9.2-*.conda \
+    --user uibcdf
+```
+
+Add `--force` to overwrite an existing build with the same version+build string.
+
+## Multi-Python and Multi-Platform
+
+### Multiple Python versions (3.11, 3.12, 3.13)
+
+The `meta.yaml` currently pins `python =3.13` in host/run. To support 3.11 and 3.12:
+
+**Option A — separate builds per version (simplest):**
+Maintain separate branches or build configs. For each Python version:
+1. Change `python =3.13` → `python =3.11` (or `=3.12`) in meta.yaml.
+2. Run `conda build` in a conda env that has that Python version installed.
+3. Upload all resulting `.conda` files.
+
+**Option B — conda build matrix (cleaner long-term):**
+Add a `conda_build_config.yaml` alongside `meta.yaml`:
+```yaml
+python:
+  - "3.11"
+  - "3.12"
+  - "3.13"
+```
+Change `meta.yaml` to use `{{ python }}` instead of hardcoded `=3.13`.
+`conda build` will then build one package per Python version automatically.
+The build strings will differ: `py311_*`, `py312_*`, `py313_*`.
+
+**Caveat:** The shiboken fixes (`Module::get`, `Module::import`, enum disambiguation)
+are Python-version-independent. The same patches apply for 3.11/3.12. The main
+difference is that Python 3.13 has some API changes (e.g. PEP 703 free-threaded);
+`pep384impl.cpp` may need adjustments for older Python versions if `Py_LIMITED_API`
+behavior differs.
+
+### macOS (arm64 and x86_64)
+
+The shiboken patches are platform-independent C++ — they will compile on macOS
+without modification.
+
+Key differences vs Linux:
+
+- **Shared library suffix**: `.dylib` instead of `.so`. Build scripts and test
+  commands need updating (e.g. `test -f "$SP_DIR/PySide6_uibcdf/Shiboken.abi3.so"`
+  → `.dylib`).
+- **RPATH**: macOS uses `@rpath` instead of `$ORIGIN`. The `install_name_tool`
+  or CMake's `INSTALL_RPATH` may need adjustment so `libshiboken6.abi3.dylib`
+  is found at runtime.
+- **Compiler**: use conda-forge's `clang` (via `{{ compiler('cxx') }}`) — already
+  handled by the Jinja2 macro.
+- **Qt6**: `qt6-main` and `qt6-webengine` are available for macOS on conda-forge.
+  Verify the versions align with 6.9.2 on both arm64 and x86_64.
+- **arm64**: shiboken itself builds on arm64 without issues. Qt's QtWebEngine
+  (Chromium-based) historically lagged on arm64 — check conda-forge availability.
+- **CI**: the self-hosted runner plan should include a macOS arm64 runner. Without
+  hardware-accelerated builds, compile times will be very long on emulated arm64.
+
+Recommended first step: get a clean macOS arm64 build of shiboken6-uibcdf alone
+(no PySide6) to validate the recipe machinery, then layer essentials on top.
+
+### Windows
+
+Significantly more work than macOS. Key differences:
+
+- **Compiler**: MSVC (via `{{ compiler('cxx') }}`). Shiboken requires MSVC on Windows
+  (not MinGW). Conda-forge has MSVC compilers available.
+- **DLL naming**: `Shiboken.pyd` or `Shiboken.abi3.pyd` instead of `.so`/`.dylib`.
+  `libshiboken6.abi3.dll` instead of `.so`.
+- **Path separators and RPATH**: Windows uses `PATH`-based DLL discovery (no RPATH).
+  Conda handles this with `conda.pth` and `Library/bin` convention — Qt DLLs should
+  land in `$PREFIX/Library/bin`, not `$PREFIX/lib`.
+- **build.sh → bld.bat**: conda-build uses `bld.bat` on Windows, not `build.sh`.
+  Add `devtools/conda-build/bld.bat` for each package.
+- **Qt6 on Windows**: conda-forge has `qt6-main` for Windows. QtWebEngine availability
+  on Windows in conda-forge is limited — check before planning addons for Windows.
+- **The sbkmodule.cpp patches**: use `std::string_view` and `std::string`, which
+  are standard C++17 — no Windows-specific changes needed.
+
+Recommended approach: Windows support is a non-trivial investment. Suggest tackling
+it only after macOS arm64 is working, and only if there is a concrete user need.
+
 ## Things To Keep Stable
 
 - keep the repo version line aligned with the family version
@@ -305,3 +507,6 @@ anaconda upload <path-to-package.conda> --user uibcdf --channel uibcdf
 - keep this document updated when the recipe or source boundary changes
 - **when upgrading to 6.10.x**: re-check `libshiboken/sbkmodule.cpp` to confirm
   the "PySide6." remap is present in **both** `Module::get` AND `Module::import`
+- **when upgrading to 6.10.x**: verify enum disambiguation patches in
+  `ApiExtractor/typedatabase.cpp` and `ApiExtractor/abstractmetabuilder.cpp`
+  are still present and correct
