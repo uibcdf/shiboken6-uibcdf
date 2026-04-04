@@ -781,6 +781,12 @@ PepType_GetNameStr(PyTypeObject *type)
     return nodots != nullptr ? nodots + 1 : ret;
 }
 
+const char *
+PepType_GetFullyQualifiedNameStr(PyTypeObject *type)
+{
+    return type->tp_name;
+}
+
 // PYSIDE-2264: Find the _functools or functools module and retrieve the
 //              partial function. This can be tampered with, check carefully.
 PyObject *

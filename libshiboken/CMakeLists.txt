@@ -172,6 +172,8 @@ install(FILES
         sbkmodule.h
         sbknumpycheck.h
         sbknumpyview.h
+        sbkpep.h
+        sbkpepbuffer.h
         sbkstring.h
         sbkcppstring.h
         sbksmartpointer.h
