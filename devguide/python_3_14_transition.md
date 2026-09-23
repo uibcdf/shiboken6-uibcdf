@@ -68,12 +68,28 @@ and `shiboken6 --version` succeeded. Neither earlier artifact should be
 promoted. The final artifact also remains local and unreleased pending the
 downstream and platform gates.
 
+## Python 3.11 regression experiment
+
+On 23 September 2026, a disposable copy of this candidate changed only the
+recipe's Python host/run pins from 3.14 to 3.11. A Linux-64 Conda build and
+its package tests passed, producing
+`shiboken6-uibcdf-6.10.1-py311h3fd9d12_0.conda` (SHA-256
+`d2754cabe053fc279df1f12ce18dcaca009fa9b041091429f97dca384db95a45`).
+The test environment imported `shiboken6_uibcdf` and ran
+`shiboken6 --version`. This is evidence for one local 3.11 cell, not a
+change to this branch's 3.14 recipe or a multi-interpreter ABI3 claim.
+The artifact was used to build and test the matching Essentials 3.11
+experiment. General build-order and storage lessons are recorded in the
+[Addons family build practices](https://github.com/uibcdf/pyside6-addons-uibcdf/blob/python-3.14-qt-6.10.1/devguide/qt_family_build_practices.md).
+
 ## Remaining gates
 
 1. Test Shiboken behavior beyond import and version checks: signatures,
-   generated bindings, ownership/lifetime and the downstream Essentials build.
+   generated bindings, and ownership/lifetime. Local downstream Essentials
+   builds have passed for Python 3.14 and the disposable 3.11 experiment.
 2. Decide whether a single ABI3 package can honestly serve Python 3.11–3.14;
-   otherwise build and test a per-interpreter matrix.
+   otherwise finish and commit a truthful per-interpreter matrix. The local
+   3.11 and 3.14 cells alone do not establish 3.12 or 3.13 support.
 3. Coordinate with Essentials, Addons, Positioning and WebEngine 6.10.1,
    then stage and validate the full MolSysViewer Qt host. Linux-only local
    evidence cannot authorize release or a public Python 3.14 claim.
