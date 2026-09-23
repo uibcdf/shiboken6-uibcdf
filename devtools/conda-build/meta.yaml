@@ -16,12 +16,12 @@ requirements:
     - ninja
     - pkg-config
   host:
-    - python =3.14
+    - python
     - qt6-main =6.10.1
     - clangdev
     - llvmdev
   run:
-    - python =3.14
+    - python
     - qt6-main =6.10.1
     - libclang13
     - libgcc
@@ -35,7 +35,7 @@ test:
     - shiboken6 --version
 
 about:
-  summary: "Experimental UIBCDF-aligned shiboken6 package for Linux/Python 3.14."
+  summary: "Experimental UIBCDF-aligned shiboken6 package for Linux."
   license: "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
   description: |
     First experimental conda package boundary for the Qt-for-Python standalone

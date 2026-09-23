@@ -31,8 +31,8 @@ guide. This branch uses a separate worktree and does not alter that checkout.
 
 ## First package experiment
 
-The recipe now builds source version 6.10.1 against `qt6-main=6.10.1` and
-Python 3.14. It intentionally creates a `py314` package with a
+The first recipe built source version 6.10.1 against `qt6-main=6.10.1` and
+Python 3.14. It intentionally created a `py314` package with a
 `python_abi 3.14.* *_cp314` runtime dependency. Although the extension is
 named `.abi3.so`, a genuinely multi-interpreter package needs its own
 stable-ABI build contract and tests on every claimed interpreter; changing
@@ -68,7 +68,7 @@ and `shiboken6 --version` succeeded. Neither earlier artifact should be
 promoted. The final artifact also remains local and unreleased pending the
 downstream and platform gates.
 
-## Python 3.11 regression experiment
+## Python 3.11–3.13 regression experiments
 
 On 23 September 2026, a disposable copy of this candidate changed only the
 recipe's Python host/run pins from 3.14 to 3.11. A Linux-64 Conda build and
@@ -77,19 +77,44 @@ its package tests passed, producing
 `d2754cabe053fc279df1f12ce18dcaca009fa9b041091429f97dca384db95a45`).
 The test environment imported `shiboken6_uibcdf` and ran
 `shiboken6 --version`. This is evidence for one local 3.11 cell, not a
-change to this branch's 3.14 recipe or a multi-interpreter ABI3 claim.
+multi-interpreter ABI3 claim.
 The artifact was used to build and test the matching Essentials 3.11
 experiment. General build-order and storage lessons are recorded in the
 [Addons family build practices](https://github.com/uibcdf/pyside6-addons-uibcdf/blob/python-3.14-qt-6.10.1/devguide/qt_family_build_practices.md).
+
+The same disposable pin substitution was repeated for Python 3.12 and
+3.13 on Linux-64. Both Conda builds and package tests passed. Their
+artifacts were `py312h3fd9d12_0` (SHA-256
+`ef149953fe0a1f76ac4dbe146ab0a0e88e59f46268937af31efdfaa386ce2ffa`)
+and `py313h3fd9d12_0` (SHA-256
+`a135ac3c679036e03aadf8fb75c9f804c6890065284abdb6779086acc7c37ffe`).
+Each was then installed with the matching Essentials/Addons variant in an
+independent clean environment, without canonical PySide6. The full family
+imported and loaded local HTML under Xvfb. The Python 3.13 build emitted
+a non-fatal deprecated-Python-API warning; it did not fail the package test.
+
+The branch recipe has since been changed to select Python from Conda's
+explicit `--python` variant instead of hard-pinning 3.14. A no-download,
+non-finalized render produced distinct `py311`, `py312`, `py313`, and `py314`
+build strings with matching Python host variants. On Linux-64, a full
+`conda build --python 3.12` of the revised recipe then passed its package
+tests using `CPU_COUNT=12`. The resulting local artifact has SHA-256
+`1faa8deecc53c65b0275c4716e27e50286f6ab5e6ca69f740e979085af8a5887`.
+Its finalized `info/index.json` declares `python >=3.12,<3.13.0a0`,
+`python_abi 3.12.* *_cp312`, `qt6-main 6.10.1.*`, and `libclang13`.
+This verifies the revised recipe in one cell; it does not validate the
+other three cells or any staged/public package.
 
 ## Remaining gates
 
 1. Test Shiboken behavior beyond import and version checks: signatures,
    generated bindings, and ownership/lifetime. Local downstream Essentials
-   builds have passed for Python 3.14 and the disposable 3.11 experiment.
-2. Decide whether a single ABI3 package can honestly serve Python 3.11–3.14;
-   otherwise finish and commit a truthful per-interpreter matrix. The local
-   3.11 and 3.14 cells alone do not establish 3.12 or 3.13 support.
+   builds have passed for Python 3.11–3.14 on Linux, with 3.11–3.13
+   using disposable recipe variants.
+2. Build and test the revised, variant-selected recipe for Python 3.11,
+   3.13, and 3.14 and inspect each finalized runtime constraint. The 3.12
+   cell passed locally; current disposable
+   experiments support per-interpreter packages, not a single ABI3 package.
 3. Coordinate with Essentials, Addons, Positioning and WebEngine 6.10.1,
    then stage and validate the full MolSysViewer Qt host. Linux-only local
    evidence cannot authorize release or a public Python 3.14 claim.
