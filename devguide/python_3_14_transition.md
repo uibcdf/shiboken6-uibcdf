@@ -116,15 +116,28 @@ five-package installation passed the Addons and WebEngine local-HTML smoke
 under Xvfb. This closes a second revised-recipe Linux cell, not the staged
 or cross-platform gate.
 
+The committed variant-selected recipe then built and passed Conda package
+tests on Linux/Python 3.14 on 2026-09-23. The local artifact
+`shiboken6-uibcdf-6.10.1-py314h3fd9d12_0.conda` has SHA-256
+`0db537f21bac4ef73e01ccfe34fc098f9e49c61f9cc71d858454c7d9747d0391`.
+Finalized metadata requires `python >=3.14,<3.15.0a0`,
+`python_abi 3.14.* *_cp314`, Qt 6.10.1, and `libclang13`. This exact
+local-channel file fed the revised Essentials and Addons builds. An
+independent five-package Python 3.14 environment passed local-HTML
+WebEngine loading, and a separate installed MolSysViewer development
+environment with all five exact files passed three real Qt transport/window
+tests plus its opt-in full molecular render under Xvfb. These results do not
+establish staging, a versioned MolSysMT/Viewer pair, or another platform.
+
 ## Remaining gates
 
 1. Test Shiboken behavior beyond import and version checks: signatures,
    generated bindings, and ownership/lifetime. Local downstream Essentials
-   builds have passed for Python 3.11–3.14 on Linux, with 3.11–3.13
-   using disposable recipe variants.
+   builds have passed for Python 3.11–3.14 on Linux; only 3.11 still uses a
+   disposable recipe variant.
 2. Build and test the revised, variant-selected recipe for Python 3.11
-   and 3.14 and inspect each finalized runtime constraint. The 3.12 and
-   3.13 cells passed locally; current disposable
+   and inspect its finalized runtime constraint. The 3.12, 3.13, and 3.14
+   cells passed locally; current disposable
    experiments support per-interpreter packages, not a single ABI3 package.
 3. Coordinate with Essentials, Addons, Positioning and WebEngine 6.10.1,
    then stage and validate the full MolSysViewer Qt host. Linux-only local
