@@ -102,8 +102,19 @@ tests using `CPU_COUNT=12`. The resulting local artifact has SHA-256
 `1faa8deecc53c65b0275c4716e27e50286f6ab5e6ca69f740e979085af8a5887`.
 Its finalized `info/index.json` declares `python >=3.12,<3.13.0a0`,
 `python_abi 3.12.* *_cp312`, `qt6-main 6.10.1.*`, and `libclang13`.
-This verifies the revised recipe in one cell; it does not validate the
-other three cells or any staged/public package.
+That first revised-recipe build verified one cell, not a staged or public
+package.
+
+The revised recipe also built and passed its Conda package tests on
+Linux/Python 3.13 on 2026-09-23 with `CPU_COUNT=12`. The artifact
+`shiboken6-uibcdf-6.10.1-py313h3fd9d12_0.conda` has SHA-256
+`8a944dd7c0fb74d2978d882fe64df519adaf047e17f4176bb24708ce25b183c5`.
+Its finalized metadata requires `python >=3.13,<3.14.0a0`,
+`python_abi 3.13.* *_cp313`, Qt 6.10.1, and `libclang13`. It was the exact
+local-channel input to the revised Essentials and Addons builds; a fresh
+five-package installation passed the Addons and WebEngine local-HTML smoke
+under Xvfb. This closes a second revised-recipe Linux cell, not the staged
+or cross-platform gate.
 
 ## Remaining gates
 
@@ -111,9 +122,9 @@ other three cells or any staged/public package.
    generated bindings, and ownership/lifetime. Local downstream Essentials
    builds have passed for Python 3.11–3.14 on Linux, with 3.11–3.13
    using disposable recipe variants.
-2. Build and test the revised, variant-selected recipe for Python 3.11,
-   3.13, and 3.14 and inspect each finalized runtime constraint. The 3.12
-   cell passed locally; current disposable
+2. Build and test the revised, variant-selected recipe for Python 3.11
+   and 3.14 and inspect each finalized runtime constraint. The 3.12 and
+   3.13 cells passed locally; current disposable
    experiments support per-interpreter packages, not a single ABI3 package.
 3. Coordinate with Essentials, Addons, Positioning and WebEngine 6.10.1,
    then stage and validate the full MolSysViewer Qt host. Linux-only local
