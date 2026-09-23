@@ -266,6 +266,7 @@ type_map.update({
     "QSet": typing.Set,
     "QString": str,
     "QLatin1String": str,
+    "QAnyStringView": str,
     "QStringView": str,
     "QStringList": StringList,
     "quint16": int,
@@ -514,6 +515,7 @@ def init_PySide6_uibcdf_QtCore():
         "PySide6_uibcdf.QtCore.QUrl.ComponentFormattingOptions":
             PySide6_uibcdf.QtCore.QUrl.ComponentFormattingOption,  # mismatch option/enum, why???
         "PyUnicode": typing.Text,
+        "QByteArray": typing.Union[PySide6_uibcdf.QtCore.QByteArray, bytes, bytearray, memoryview],
         "QByteArrayView": PySide6_uibcdf.QtCore.QByteArray,
         "Q_NULLPTR": None,
         "QCalendar.Unspecified": PySide6_uibcdf.QtCore.QCalendar.Unspecified,
@@ -541,6 +543,8 @@ def init_PySide6_uibcdf_QtCore():
         "QVariant.Type": type,  # not so sure here...
         "QVariantMap": typing.Dict[str, Variant],
         "std.chrono.seconds{5}" : ellipsis,
+        "Internal.defaultTryTimeout": 5000,
+        "static_cast<int>(Internal.defaultTryTimeout.count())": 5000
     })
     from shibokensupport.signature.parser import using_snake_case
     if using_snake_case():
@@ -556,6 +560,8 @@ def init_PySide6_uibcdf_QtCore():
     type_map_tuple.update({("PySide6_uibcdf.QtCore.QObject.disconnect", "char*"): str})
     type_map_tuple.update({("PySide6_uibcdf.QtCore.QObject.receivers", "char*"): str})
     type_map_tuple.update({("PySide6_uibcdf.QtCore.qtTrId", "char*"): str})
+    # The default mapping for char is int; this overload expects a character.
+    type_map_tuple.update({("PySide6_uibcdf.QtCore.QLocale.toString", "char"): str})
 
     return locals()
 
@@ -620,7 +626,7 @@ def init_PySide6_uibcdf_QtWidgets():
 def init_PySide6_uibcdf_QtSql():
     from PySide6_uibcdf.QtSql import QSqlDatabase
     type_map.update({
-        "QLatin1StringView(QSqlDatabase.defaultConnection)": QSqlDatabase.defaultConnection,
+        "QSqlDatabase.defaultConnectionName()": "",
         "QVariant.Invalid": Invalid("Variant"),  # not sure what I should create, here...
     })
     return locals()
@@ -736,6 +742,8 @@ def init_testbinding():
 
 # Functions which should return Optional(result) but don't.
 missing_optional_return = {
+    "PySide6_uibcdf.QtGui.QGuiApplication.modalWindow",
+    "PySide6_uibcdf.QtGui.QGuiApplication.screenAt",
     "PySide6_uibcdf.QtWidgets.QApplication.activeModalWidget",
     "PySide6_uibcdf.QtWidgets.QApplication.activePopupWidget",
     "PySide6_uibcdf.QtWidgets.QApplication.activeWindow",
@@ -746,6 +754,7 @@ missing_optional_return = {
     "PySide6_uibcdf.QtWidgets.QComboBox.completer",
     "PySide6_uibcdf.QtWidgets.QComboBox.lineEdit",
     "PySide6_uibcdf.QtWidgets.QComboBox.validator",
+    "PySide6_uibcdf.QtWidgets.QCompleter.popup",
     "PySide6_uibcdf.QtWidgets.QGridLayout.itemAt",
     "PySide6_uibcdf.QtWidgets.QGridLayout.itemAtPosition",
     "PySide6_uibcdf.QtWidgets.QLayout.itemAt",

@@ -6,6 +6,7 @@
 #include "autodecref.h"
 #include "pep384ext.h"
 #include "sbkenum.h"
+#include "sbkerrors.h"
 #include "sbkstring.h"
 #include "sbkstaticstrings.h"
 #include "sbkstaticstrings_p.h"
@@ -14,8 +15,27 @@
 #include "gilstate.h"
 
 #include <cctype>
+#include <iostream>
+#include <string_view>
+#include <vector>
 
 using namespace Shiboken;
+
+using StringViewVector = std::vector<std::string_view>;
+
+static StringViewVector splitStringView(std::string_view s, char delimiter)
+{
+    StringViewVector result;
+    const auto size = s.size();
+    for (std::string_view::size_type pos = 0; pos < size; ) {
+        auto nextPos = s.find(delimiter, pos);
+        if (nextPos == std::string_view::npos)
+            nextPos = size;
+        result.push_back(s.substr(pos, nextPos - pos));
+        pos = nextPos + 1;
+    }
+    return result;
+}
 
 extern "C"
 {
@@ -60,8 +80,8 @@ SelectableFeatureHook initSelectableFeature(SelectableFeatureHook func)
 void disassembleFrame(const char *marker)
 {
     Shiboken::GilState gil;
-    PyObject *error_type, *error_value, *error_traceback;
-    PyErr_Fetch(&error_type, &error_value, &error_traceback);
+
+    Shiboken::Errors::Stash errorStash;
     static PyObject *dismodule = PyImport_ImportModule("dis");
     static PyObject *disco = PyObject_GetAttrString(dismodule, "disco");
     static PyObject *const _f_lasti = Shiboken::String::createStaticString("f_lasti");
@@ -84,12 +104,11 @@ void disassembleFrame(const char *marker)
         fprintf(stdout, "%s END line=%ld %s\n\n", marker, line, fname);
     }
 #if PY_VERSION_HEX >= 0x030C0000 && !Py_LIMITED_API
-    if (error_type)
-        PyErr_DisplayException(error_value);
+    if (auto *exc = errorStash.getException())
+        PyErr_DisplayException(exc);
 #endif
     static PyObject *stdout_file = PySys_GetObject("stdout");
     ignore.reset(PyObject_CallMethod(stdout_file, "flush", nullptr));
-    PyErr_Restore(error_type, error_value, error_traceback);
 }
 
 // OpCodes: Adapt for each Python version by checking the defines in the generated header opcode_ids.h
@@ -133,7 +152,6 @@ static int const CALL_METHOD = 161;
 static bool currentOpcode_Is_CallMethNoArgs()
 {
     static const auto number = _PepRuntimeVersion();
-    static PyObject *flags = PySys_GetObject("flags");
     // We look into the currently active operation if we are going to call
     // a method with zero arguments.
     auto *frame = PyEval_GetFrame();
@@ -200,27 +218,40 @@ static bool currentOpcode_Is_CallMethNoArgs()
     return opcode2 == CALL_OpCode(number) && oparg2 == 0;
 }
 
+static inline PyObject *PyUnicode_fromStringView(std::string_view s)
+{
+    return PyUnicode_FromStringAndSize(s.data(), s.size());
+}
+
+static bool populateEnumDicts(PyObject *typeDict, PyObject *dict, const char *enumFlagInfo)
+{
+    StringViewVector parts = splitStringView(enumFlagInfo, ':');
+    if (parts.size() < 2)
+        return false;
+    AutoDecRef name(PyUnicode_fromStringView(parts[0]));
+    AutoDecRef typeName(PyUnicode_fromStringView(parts[1]));
+    if (parts.size() >= 3) {
+        AutoDecRef key(PyUnicode_fromStringView(parts[2]));
+        auto *value = name.object();
+        if (PyDict_SetItem(dict, key, value) != 0)
+            return false;
+    }
+    if (PyDict_SetItem(typeDict, name, typeName) != 0)
+        return false;
+    return true;
+}
+
 void initEnumFlagsDict(PyTypeObject *type)
 {
     // We create a dict for all flag enums that holds the original C++ name
     // and a dict that gives every enum/flag type name.
-    static PyObject *const split = Shiboken::String::createStaticString("split");
-    static PyObject *const colon = Shiboken::String::createStaticString(":");
-    auto sotp = PepType_SOTP(type);
+    auto *sotp = PepType_SOTP(type);
     auto **enumFlagInfo = sotp->enumFlagInfo;
     auto *dict = PyDict_New();
     auto *typeDict = PyDict_New();
     for (; *enumFlagInfo; ++enumFlagInfo) {
-        AutoDecRef line(PyUnicode_FromString(*enumFlagInfo));
-        AutoDecRef parts(PyObject_CallMethodObjArgs(line, split, colon, nullptr));
-        auto *name = PyList_GetItem(parts, 0);
-        if (PyList_Size(parts) == 3) {
-            auto *key = PyList_GetItem(parts, 2);
-            auto *value = name;
-            PyDict_SetItem(dict, key, value);
-        }
-        auto *typeName = PyList_GetItem(parts, 1);
-        PyDict_SetItem(typeDict, name, typeName);
+        if (!populateEnumDicts(typeDict, dict, *enumFlagInfo))
+            std::cerr << __FUNCTION__ << ": Invalid enum \"" << *enumFlagInfo << '\n';
     }
     sotp->enumFlagsDict = dict;
     sotp->enumTypeDict = typeDict;
@@ -366,15 +397,11 @@ PyObject *mangled_type_getattro(PyTypeObject *type, PyObject *name)
     }
 
     if (!ret && name != ignAttr1 && name != ignAttr2) {
-        PyObject *error_type{}, *error_value{}, *error_traceback{};
-        PyErr_Fetch(&error_type, &error_value, &error_traceback);
+        Shiboken::Errors::Stash errorsStash;
         ret = lookupUnqualifiedOrOldEnum(type, name);
         if (ret) {
-            Py_DECREF(error_type);
-            Py_XDECREF(error_value);
-            Py_XDECREF(error_traceback);
-        } else {
-            PyErr_Restore(error_type, error_value, error_traceback);
+            errorsStash.release();
+            return ret;
         }
     }
     return ret;

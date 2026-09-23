@@ -2,13 +2,18 @@
 
 This directory records the local packaging and maintenance recipe for shiboken6-uibcdf.
 
-Primary entrypoint:
+Current entrypoint:
 
-- [bootstrap_6.9.2.md](bootstrap_6.9.2.md)
+- [python_3_14_transition.md](python_3_14_transition.md) — the unreleased
+  6.10.1/Python 3.14 candidate and its gates.
+
+Historical bootstrap:
+
+- [bootstrap_6.9.2.md](bootstrap_6.9.2.md) — the experimental 6.9.2 packaging
+  line. Read it when investigating that line, not as current 6.10.1 instructions.
 
 Purpose:
 
-- make the 6.9.2 line reproducible without consulting /tmp/molsysviewer-standalone0-holl2t5d.html
 - record where the code came from
 - record why this repo exists inside the provisional UIBCDF Qt-for-Python family
-- record how to approach a future 6.10.x line
+- distinguish tested local candidates from staged and published packages

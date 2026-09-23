@@ -50,6 +50,10 @@ struct SbkConverter
      *  wrapper assigned for it.
      */
     CppToPythonFunc copyToPython;
+    /** Same as copyToPython, but additionally receives the 'PyTypeObject *'.
+      * Both functions are checked.
+      * FIXME PYSIDE 7: Add PyTypeObject parameter to CppToPythonFunc? */
+    CppToPythonWithTypeFunc copyToPythonWithType;
     /**
      *  This is a special case of a Python to C++ conversion. It returns
      *  the underlying C++ pointer of a Python wrapper passed as parameter
@@ -366,7 +370,7 @@ struct Primitive<bool> : OnePrimitive<bool>
     }
     static void toCpp(PyObject *pyIn, void *cppOut)
     {
-        *reinterpret_cast<bool *>(cppOut) = PyLong_AS_LONG(pyIn) != 0;
+        *reinterpret_cast<bool *>(cppOut) = PyLong_AsLong(pyIn) != 0;
     }
 };
 

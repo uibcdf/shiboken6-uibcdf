@@ -1,7 +1,9 @@
 LICENSE_TEXT = """
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-from __future__ import annotations
+"""
+MYPY_TEXT = """
+# mypy: disable-error-code="override, overload-overlap"
 """
 
 # flake8: noqa E:402
@@ -69,12 +71,12 @@ class Formatter(Writer):
     backup = inspect.formatannotation
 
     @classmethod
-    def formatannotation(cls, annotation, base_module=None):
+    def formatannotation(cls, annotation, base_module=None, *args, **kwargs):
         if getattr(annotation, '__module__', None) == 'typing':
             # do not remove the prefix!
             return repr(annotation)
         # do the normal action.
-        return cls.backup(annotation, base_module)
+        return cls.backup(annotation, base_module, *args, **kwargs)
 
     @classmethod
     def fix_typing_prefix(cls, signature):
@@ -214,7 +216,7 @@ class Formatter(Writer):
     def enum(self, class_name, enum_name, value):
         spaces = indent * self.level
         hexval = hex(value)
-        self.print(f"{spaces}{enum_name:25} = ...  # {hexval if value >= 0 else value}")
+        self.print(f"{spaces}{enum_name:25} = {hexval if value >= 0 else value}")
         yield
 
     @contextmanager
@@ -311,10 +313,9 @@ def generate_pyi(import_name, outpath, options):
         """
         This file contains the exact signatures for all functions in module
         {import_name}, except for defaults which are replaced by "...".
-
-        # mypy: disable-error-code="override, overload-overlap"
         """
         '''))
+    fmt.print(MYPY_TEXT.strip())
     HintingEnumerator(fmt).module(import_name)
     fmt.print("# eof")
     # Postprocess: resolve the imports

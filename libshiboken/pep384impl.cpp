@@ -3,7 +3,7 @@
 
 #define PEP384_INTERN
 
-#include "sbkpython.h"
+#include "pep384impl.h"
 #include "autodecref.h"
 #include "sbkstaticstrings.h"
 #include "sbkstaticstrings_p.h"
@@ -120,7 +120,7 @@ check_PyTypeObject_valid()
     Shiboken::AutoDecRef tpDict(PepType_GetDict(check));
     auto *checkDict = tpDict.object();
     if (false
-        || strcmp(probe_tp_name, check->tp_name) != 0
+        || std::strcmp(probe_tp_name, check->tp_name) != 0
         || probe_tp_basicsize       != check->tp_basicsize
         || probe_tp_dealloc         != check->tp_dealloc
         || probe_tp_repr            != check->tp_repr
@@ -148,7 +148,7 @@ check_PyTypeObject_valid()
         || probe_tp_bases           != typetype->tp_bases
         || probe_tp_mro             != typetype->tp_mro
         || Py_TPFLAGS_DEFAULT       != (check->tp_flags & Py_TPFLAGS_DEFAULT))
-        Py_FatalError("The structure of type objects has changed!");
+        Py_FatalError("libshiboken: The structure of type objects has changed!");
     Py_DECREF(checkObj);
     Py_DECREF(probe_tp_base_obj);
     Py_DECREF(w);
@@ -407,6 +407,8 @@ const char *_PepUnicode_AsString(PyObject *str)
             Py_FatalError("Error in " AT);
     }
     PyObject *bytesStr = PyUnicode_AsEncodedString(str, "utf8", nullptr);
+    if (bytesStr == nullptr)
+        Py_FatalError("Error in " AT);
     PyObject *entry = PyDict_GetItemWithError(cstring_dict, bytesStr);
     if (entry == nullptr) {
         int e = PyDict_SetItem(cstring_dict, bytesStr, bytesStr);
@@ -464,7 +466,7 @@ Pep_GetVerboseFlag()
 
 // Support for pyerrors.h
 
-#if defined(Py_LIMITED_API) || PY_VERSION_HEX < 0x030C0000
+#ifdef PEP_OLD_ERR_API
 // Emulate PyErr_GetRaisedException() using the deprecated PyErr_Fetch()/PyErr_Store()
 PyObject *PepErr_GetRaisedException()
 {
@@ -549,7 +551,7 @@ static PyTypeObject *dt_getCheck(const char *name)
     PyObject *op = PyObject_GetAttrString(PyDateTimeAPI->module, name);
     if (op == nullptr) {
         fprintf(stderr, "datetime.%s not found\n", name);
-        Py_FatalError("aborting");
+        Py_FatalError("libshiboken: error initializing DateTime support, aborting");
     }
     return reinterpret_cast<PyTypeObject *>(op);
 }
@@ -563,10 +565,10 @@ init_DateTime(void)
     if (!initialized) {
         PyDateTimeAPI = (datetime_struc *)malloc(sizeof(datetime_struc));
         if (PyDateTimeAPI == nullptr)
-            Py_FatalError("PyDateTimeAPI malloc error, aborting");
+            Py_FatalError("libshiboken: PyDateTimeAPI malloc error, aborting");
         PyDateTimeAPI->module = PyImport_ImportModule("datetime");
         if (PyDateTimeAPI->module == nullptr)
-            Py_FatalError("datetime module not found, aborting");
+            Py_FatalError("libshiboken: datetime module not found, aborting");
         PyDateTimeAPI->DateType     = dt_getCheck("date");
         PyDateTimeAPI->DateTimeType = dt_getCheck("datetime");
         PyDateTimeAPI->TimeType     = dt_getCheck("time");
@@ -804,10 +806,10 @@ Pep_GetPartialFunction(void)
         functools = PyImport_ImportModule("functools");
     }
     if (!functools)
-        Py_FatalError("functools cannot be found");
+        Py_FatalError("libshiboken: functools cannot be found");
     result = PyObject_GetAttrString(functools, "partial");
     if (!result || !PyCallable_Check(result))
-        Py_FatalError("partial not found or not a function");
+        Py_FatalError("libshiboken: partial not found or not a function");
     initialized = true;
     return result;
 }
@@ -828,10 +830,14 @@ PepRun_GetResult(const char *command)
      * Evaluate a string and return the variable `result`
      */
     PyObject *d = PyDict_New();
-    if (d == nullptr
-        || PyDict_SetItem(d, Shiboken::PyMagicName::builtins(), PyEval_GetBuiltins()) < 0) {
+    if (d == nullptr)
         return nullptr;
-    }
+
+    Shiboken::AutoDecRef builtins(PepEval_GetFrameBuiltins());
+    if (PyDict_SetItem(d, Shiboken::PyMagicName::builtins(), PyEval_GetBuiltins()) < 0)
+        return nullptr;
+    builtins.reset(nullptr);
+
     PyObject *v = PyRun_String(command, Py_file_input, d, d);
     PyObject *res = v ? PyDict_GetItem(d, Shiboken::PyName::result()) : nullptr;
     Py_XDECREF(v);
@@ -1141,6 +1147,61 @@ void *PepType_GetSlot(PyTypeObject *type, int aSlot)
     }
     assert(false);
     return nullptr;
+}
+
+PyObject *PepEval_GetFrameGlobals()
+{
+    // PyEval_GetFrameGlobals() (added to stable ABI in 3.13) returns a new reference
+    // as opposed to deprecated PyEval_GetGlobals() which returns a borrowed reference
+#if !defined(PYPY_VERSION) && ((!defined(Py_LIMITED_API) && PY_VERSION_HEX >= 0x030D0000) || (defined(Py_LIMITED_API) && Py_LIMITED_API >= 0x030D0000))
+    return PyEval_GetFrameGlobals();
+#else
+    PyObject *result = PyEval_GetGlobals();
+    Py_XINCREF(result);
+    return result;
+#endif
+}
+
+PyObject *PepEval_GetFrameBuiltins()
+{
+    // PepEval_GetFrameBuiltins() (added to stable ABI in 3.13) returns a new reference
+    // as opposed to deprecated PyEval_GetBuiltins() which returns a borrowed reference
+#if !defined(PYPY_VERSION) && ((!defined(Py_LIMITED_API) && PY_VERSION_HEX >= 0x030D0000) || (defined(Py_LIMITED_API) && Py_LIMITED_API >= 0x030D0000))
+    return PyEval_GetFrameBuiltins();
+#else
+    PyObject *result = PyEval_GetBuiltins();
+    Py_XINCREF(result);
+    return result;
+#endif
+}
+
+int PepModule_AddType(PyObject *module, PyTypeObject *type)
+{
+    // PyModule_AddType (added to stable ABI in 3.10) is the replacement for
+    // PyModule_AddObject() (deprecated in 3.13) for adding types to a module.
+#if !defined(PYPY_VERSION) && ((!defined(Py_LIMITED_API) && PY_VERSION_HEX >= 0x030A0000) || (defined(Py_LIMITED_API) && Py_LIMITED_API >= 0x030A0000))
+    return PyModule_AddType(module, type);
+#else
+    auto *ob = reinterpret_cast<PyObject *>(type);
+    int result = PyModule_AddObject(module, PepType_GetNameStr(type), ob);
+    if (result != 0)
+        Py_XDECREF(ob);
+    return result;
+#endif
+}
+
+int PepModule_Add(PyObject *module, const char *name, PyObject *value)
+{
+    // PyModule_Add (added to stable ABI in 3.13) is the replacement for PyModule_AddObject()
+    // (deprecated in 3.13).
+#if !defined(PYPY_VERSION) && ((!defined(Py_LIMITED_API) && PY_VERSION_HEX >= 0x030D0000) || (defined(Py_LIMITED_API) && Py_LIMITED_API >= 0x030D0000))
+    return PyModule_Add(module, name, value);
+#else
+    int result = PyModule_AddObject(module, name, value);
+    if (result != 0)
+        Py_XDECREF(value);
+    return result;
+#endif
 }
 
 /***************************************************************************

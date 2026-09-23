@@ -18,6 +18,7 @@
 
 #include "basewrapper.h"
 #include "autodecref.h"
+#include "sbkpep.h"
 #include "sbkstring.h"
 #include "sbkstaticstrings.h"
 #include "sbkstaticstrings_p.h"
@@ -26,6 +27,7 @@
 #include <structmember.h>
 
 #include <algorithm>
+#include <cstring>
 
 using namespace Shiboken;
 
@@ -68,7 +70,7 @@ PyObject *GetClassOrModOf(PyObject *ob)
         return _get_class_of_descr(ob);
     if (Py_TYPE(ob) == &PyWrapperDescr_Type)
         return _get_class_of_descr(ob);
-    Py_FatalError("unexpected type in GetClassOrModOf");
+    Py_FatalError("libshiboken: unexpected type in GetClassOrModOf");
     return nullptr;
 }
 
@@ -89,7 +91,7 @@ PyObject *GetTypeKey(PyObject *ob)
     }
     AutoDecRef class_name(PyObject_GetAttr(ob, PyMagicName::qualname()));
     if (class_name.isNull()) {
-        Py_FatalError("Signature: missing class name in GetTypeKey");
+        Py_FatalError("libshiboken: missing class name in GetTypeKey");
         return nullptr;
     }
     return Py_BuildValue("(OO)", module_name.object(), class_name.object());
@@ -302,18 +304,18 @@ static PyObject *feature_import(PyObject * /* self */, PyObject *args, PyObject 
         return ret;
     // feature_import did not handle it, so call the normal import.
     Py_DECREF(ret);
-    static PyObject *builtins = PyEval_GetBuiltins();
-    PyObject *origImportFunc = PyDict_GetItemString(builtins, "__orig_import__");
+    Shiboken::AutoDecRef builtins(PepEval_GetFrameBuiltins());
+    PyObject *origImportFunc = PyDict_GetItemString(builtins.object(), "__orig_import__");
     if (origImportFunc == nullptr) {
-        Py_FatalError("builtins has no \"__orig_import__\" function");
+        Py_FatalError("libshiboken: builtins has no \"__orig_import__\" function");
     }
     // PYSIDE-3054: Instead of just calling the original import, we temporarily
     //              reset the whole import function to the previous version.
     //              This prevents unforeseen recursions like in settrace.
-    PyObject *featureImportFunc = PyDict_GetItemString(builtins, "__import__");
+    PyObject *featureImportFunc = PyDict_GetItemString(builtins.object(), "__import__");
     Py_INCREF(origImportFunc);
     Py_INCREF(featureImportFunc);
-    PyDict_SetItemString(builtins, "__import__", origImportFunc);
+    PyDict_SetItemString(builtins.object(), "__import__", origImportFunc);
     ret = PyObject_Call(origImportFunc, args, kwds);
     if (ret) {
         // PYSIDE-2029: Intercept after the import to search for PySide usage.
@@ -325,7 +327,7 @@ static PyObject *feature_import(PyObject * /* self */, PyObject *args, PyObject 
             ret = nullptr;
         }
     }
-    PyDict_SetItemString(builtins, "__import__", featureImportFunc);
+    PyDict_SetItemString(builtins.object(), "__import__", featureImportFunc);
     Py_DECREF(origImportFunc);
     Py_DECREF(featureImportFunc);
     return ret;
@@ -535,7 +537,7 @@ static int _finishSignaturesCommon(PyObject *module)
     // the shiboken module (or a test module).
     [[maybe_unused]] const char *name = PyModule_GetName(module);
     if (pyside_globals->finish_import_func == nullptr) {
-        assert(strncmp(name, "PySide6.", 8) != 0);
+        assert(std::strncmp(name, "PySide6.", 8) != 0);
         return 0;
     }
     // Call a Python function which has to finish something as well.
@@ -685,8 +687,8 @@ static PyObject *adjustFuncName(const char *func_name)
     static PyObject *ns = PyModule_GetDict(mapping);
 
     char _path[200 + 1] = {};
-    const char *_name = strrchr(func_name, '.');
-    strncat(_path, func_name, _name - func_name);
+    const char *_name = std::strrchr(func_name, '.');
+    std::strncat(_path, func_name, _name - func_name);
     ++_name;
 
     // This is a very cheap call into `mapping.py`.
@@ -768,7 +770,7 @@ void SetError_Argument(PyObject *args, const char *func_name, PyObject *info)
     AutoDecRef new_func_name(adjustFuncName(func_name));
     if (new_func_name.isNull()) {
         PyErr_Print();
-        Py_FatalError("seterror_argument failed to call update_mapping");
+        Py_FatalError("libshiboken: seterror_argument failed to call update_mapping");
     }
     if (info == nullptr)
         info = Py_None;
@@ -776,13 +778,13 @@ void SetError_Argument(PyObject *args, const char *func_name, PyObject *info)
                                                 args, new_func_name.object(), info, nullptr));
     if (res.isNull()) {
         PyErr_Print();
-        Py_FatalError("seterror_argument did not receive a result");
+        Py_FatalError("libshiboken: seterror_argument did not receive a result");
     }
     PyObject *err{};
     PyObject *msg{};
     if (!PyArg_UnpackTuple(res, func_name, 2, 2, &err, &msg)) {
         PyErr_Print();
-        Py_FatalError("unexpected failure in seterror_argument");
+        Py_FatalError("libshiboken: unexpected failure in seterror_argument");
     }
     PyErr_SetObject(err, msg);
 }

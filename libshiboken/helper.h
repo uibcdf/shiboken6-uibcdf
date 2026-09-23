@@ -96,17 +96,12 @@ struct LIBSHIBOKEN_API debugSbkObject
 
 struct LIBSHIBOKEN_API debugPyTypeObject
 {
-    explicit debugPyTypeObject(const PyTypeObject *o);
+    explicit debugPyTypeObject(PyTypeObject *o);
 
-    const PyTypeObject *m_object;
+    PyTypeObject *m_object;
 };
 
-struct LIBSHIBOKEN_API debugPyBuffer
-{
-    explicit debugPyBuffer(const Py_buffer &b);
-
-    const Py_buffer &m_buffer;
-};
+struct debugPyBuffer;
 
 struct debugPyArrayObject
 {

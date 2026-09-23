@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "helper.h"
+#include "sbkpepbuffer.h"
 #include "basewrapper_p.h"
 #include "sbkstring.h"
 #include "sbkstaticstrings.h"
 #include "pep384impl.h"
+#include "bufferprocs_py37.h"
 
 #include <algorithm>
 #include <optional>
@@ -46,14 +48,14 @@ static bool verbose = false;
 
 static void formatTypeTuple(PyObject *t, const char *what, std::ostream &str);
 
-static void formatPyTypeObject(const PyTypeObject *obj, std::ostream &str, bool verbose)
+static void formatPyTypeObject(PyTypeObject *obj, std::ostream &str, bool verbose)
 {
     if (obj == nullptr) {
         str << '0';
         return;
     }
 
-    str << '"' << obj->tp_name << '"';
+    str << '"' << PepType_GetFullyQualifiedNameStr(obj) << '"';
     if (verbose) {
         bool immutableType = false;
         str << ", 0x" << std::hex << obj->tp_flags << std::dec;
@@ -110,7 +112,7 @@ static void formatPyTypeObject(const PyTypeObject *obj, std::ostream &str, bool 
             if (!immutableType) {
                 auto *underlying = reinterpret_cast<const PyObject *>(obj)->ob_type;
                 if (underlying != nullptr && underlying != obj) {
-                    str << ", underlying=\"" << underlying->tp_name << '"';
+                    str << ", underlying=\"" << PepType_GetFullyQualifiedNameStr(underlying) << '"';
                 }
             }
         }
@@ -126,10 +128,12 @@ static void formatTypeTuple(PyObject *t, const char *what, std::ostream &str)
             if (i != 0)
                 str << ", ";
             Shiboken::AutoDecRef item(PyTuple_GetItem(t, i));
-            if (item.isNull())
+            if (item.isNull()) {
                 str << '0'; // Observed with non-ready types
-            else
-                str << '"' << reinterpret_cast<PyTypeObject *>(item.object())->tp_name << '"';
+            } else {
+                str << '"' << PepType_GetFullyQualifiedNameStr(reinterpret_cast<PyTypeObject *>(item.object()))
+                    << '"';
+            }
         }
         str << '}';
     }
@@ -179,9 +183,13 @@ static void formatPyDict(PyObject *obj, std::ostream &str)
     Py_ssize_t pos = 0;
     str << '{';
     while (PyDict_Next(obj, &pos, &key, &value) != 0) {
-        if (pos)
+        if (pos > 1)
             str << ", ";
-        str << Shiboken::debugPyObject(key) << '=' << Shiboken::debugPyObject(value);
+        if (PyUnicode_Check(key))
+            str << '"' << Shiboken::String::toCString(key) << '"';
+        else
+            str << Shiboken::debugPyObject(key);
+        str << ": " << Shiboken::debugPyObject(value);
     }
     str << '}';
 }
@@ -356,6 +364,8 @@ static void formatPyObjectHelper(PyObject *obj, std::ostream &str)
         formatPyFunction(obj, str);
     else if (PyMethod_Check(obj) != 0)
         formatPyMethod(obj, str);
+    else if (PyModule_Check(obj) != 0)
+        str << "Module \"" << PyModule_GetName(obj) << '"';
     else if (PepCode_Check(obj) != 0)
         formatPyCodeObject(obj, str);
     else if (PySequence_Check(obj))
@@ -386,7 +396,7 @@ debugSbkObject::debugSbkObject(SbkObject *o) : m_object(o)
 {
 }
 
-debugPyTypeObject::debugPyTypeObject(const PyTypeObject *o) : m_object(o)
+debugPyTypeObject::debugPyTypeObject(PyTypeObject *o) : m_object(o)
 {
 }
 
@@ -492,10 +502,16 @@ bool listToArgcArgv(PyObject *argList, int *argcIn, char ***argvIn, const char *
         auto *argv = new char *[1];
         *argvIn = argv;
         *argcIn = 1;
-        if (PyObject *appName = PyDict_GetItem(PyEval_GetGlobals(), Shiboken::PyMagicName::file()))
-            argv[0] = strDup(Shiboken::String::toCString(appName));
-        else
-            argv[0] = strDup(defaultAppName ? defaultAppName : "PySideApplication");
+
+        const char *appNameC = nullptr;
+        Shiboken::AutoDecRef globals(PepEval_GetFrameGlobals());
+        if (!globals.isNull())  {
+            if (PyObject *appName = PyDict_GetItem(globals, Shiboken::PyMagicName::file()))
+                appNameC = Shiboken::String::toCString(appName);
+        }
+        if (appNameC == nullptr)
+            appNameC = defaultAppName ? defaultAppName : "PySideApplication";
+        argv[0] = strDup(appNameC);
         return true;
     }
 

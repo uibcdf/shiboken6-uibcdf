@@ -5,8 +5,8 @@
 #define COMPILERSUPPORT_H
 
 #include <QtCore/qbytearraylist.h>
+#include <QtCore/qversionnumber.h>
 
-QT_FORWARD_DECLARE_CLASS(QVersionNumber)
 QT_FORWARD_DECLARE_CLASS(QString)
 
 enum class LanguageLevel {
@@ -26,8 +26,19 @@ enum class Compiler {
 
 enum class Platform {
     Unix,
+    Linux,
     Windows,
-    macOS
+    macOS,
+    Android,
+    iOS
+};
+
+enum class Architecture {
+    Other,
+    X64,
+    X86,
+    Arm64,
+    Arm32
 };
 
 namespace clang {
@@ -48,16 +59,40 @@ QString compilerFromCMake();
 
 const QString &compilerPath();
 void setCompilerPath(const QString &name);
+void addCompilerArgument(const QString &arg);
 
 Platform platform();
 bool setPlatform(const QString &name);
+
+QVersionNumber platformVersion();
+bool setPlatformVersion(const QString &name);
+
+QByteArray targetTripletForPlatform(Platform p, Architecture a, Compiler c,
+                                    const QVersionNumber &platformVersion = {});
+const char *compilerTripletValue(Compiler c);
+
+Architecture architecture();
+bool setArchitecture(const QString &name);
 
 unsigned pointerSize(); // (bit)
 void setPointerSize(unsigned ps); // Set by parser
 
 QString targetTriple();
-void setTargetTriple(const QStringList &clangOptions); // Set from cmd line before parsing
 void setTargetTriple(const QString &t); // Updated by clang parser while parsing
+
+bool isCrossCompilation();
+
+// Are there any options specifying a target
+bool hasTargetOption(const QByteArrayList &clangOptions);
+
+// Unless the platform/architecture/compiler options were set, try to find
+// values based on a --target option in clangOptions and the compiler path.
+void setHeuristicOptions(const QByteArrayList &clangOptions);
+
+// Parse a triplet "x86_64-unknown-linux-gnu" (for testing). Note the
+// compiler might not be present and defaults to host
+bool parseTriplet(QStringView name, Architecture *a, Platform *p, Compiler *c,
+                  QVersionNumber *version);
 
 } // namespace clang
 

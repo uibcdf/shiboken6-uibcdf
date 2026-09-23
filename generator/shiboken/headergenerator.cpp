@@ -185,6 +185,7 @@ void HeaderGenerator::writeWrapperClass(TextStream &s,
         for( const auto &includeGroup : includeGroups)
             s << includeGroup;
     }
+    s << "#include <sbkpython.h>\n\n#include <array>\n";
 
     s << "namespace Shiboken { struct AutoDecRef; class GilState; }\n\n";
 
@@ -240,6 +241,10 @@ void HeaderGenerator::writeWrapperClassDeclaration(TextStream &s,
       << " : public " << metaClass->qualifiedCppName()
       << "\n{\npublic:\n" << indent;
 
+    writeClassCodeSnips(s, metaClass->typeEntry()->codeSnips(),
+                        TypeSystem::CodeSnipPositionWrapperDeclaration,
+                        TypeSystem::NativeCode, classContext);
+
     writeProtectedEnums(s, classContext);
     writeSpecialFunctions(s, wrapperName, classContext);
 
@@ -284,9 +289,10 @@ void *qt_metacast(const char *_clname) override;
     }
 
     if (needsMethodCache) {
-        s << "mutable bool m_PyMethodCache[" << maxOverrides << "] = {false";
+        s << "mutable std::array<PyObject *, " << maxOverrides
+            << "> m_PyMethodCache = {nullptr";
         for (int i = 1; i < maxOverrides; ++i)
-            s << ", false";
+            s << ", nullptr";
         s << "};\n";
     }
 
@@ -722,17 +728,25 @@ HeaderGenerator::IndexValues HeaderGenerator::collectConverterIndexes() const
 }
 
 // PYSIDE-2404: Write the enums in unchanged case for reuse in type imports.
-//              For conpatibility, we create them in uppercase, too and with
+//              For compatibility, we create them in uppercase, too and with
 //              doubled index for emulating the former type-only case.
 //
 // FIXME: Remove in PySide 7. (See the note in `parser.py`)
-//
-static IndexValue typeIndexUpper(struct IndexValue const &ti)
+
+static IndexValue indexUpper(IndexValue ti) // converter indexes (old macro compatibility)
 {
     QString modi = ti.name.toUpper();
     if (modi == ti.name)
-        modi = u"// "_s + modi;
-    return {modi, ti.value * 2, ti.comment};
+        modi.prepend("// "_L1);
+    ti.name = modi;
+    return ti;
+}
+
+static IndexValue typeIndexUpper(const IndexValue &ti) // type indexes (PYSIDE-2404)
+{
+    IndexValue result = indexUpper(ti);
+    result.value *= 2;
+    return result;
 }
 
 bool HeaderGenerator::finishGeneration()
@@ -782,7 +796,7 @@ bool HeaderGenerator::finishGeneration()
     const auto converterIndexes = collectConverterIndexes();
     macrosStream << "// Converter indices\nenum [[deprecated]] : int {\n";
     for (const auto &ci : converterIndexes)
-        macrosStream << typeIndexUpper(ci);
+        macrosStream << indexUpper(ci);
     macrosStream << "};\n\n";
 
     macrosStream << "// Converter indices\nenum : int {\n";
@@ -800,7 +814,7 @@ bool HeaderGenerator::finishGeneration()
     TextStream privateTypeFunctions(&privateParameters.typeFunctions, TextStream::Language::Cpp);
 
     for (const AbstractMetaEnum &cppEnum : api().globalEnums()) {
-        if (!cppEnum.isAnonymous()) {
+        if (!cppEnum.isAnonymous() && cppEnum.typeEntry()->aliasMode() != EnumTypeEntry::AliasSource) {
             const auto te = cppEnum.typeEntry();
             if (te->hasConfigCondition())
                 parameters.conditionalIncludes[te->configCondition()].append(te->include());
@@ -832,8 +846,10 @@ bool HeaderGenerator::finishGeneration()
 
         ConfigurableScope configScope(typeFunctionsStr, classType);
         for (const AbstractMetaEnum &cppEnum : metaClass->enums()) {
-            if (cppEnum.isAnonymous() || cppEnum.isPrivate())
+            if (cppEnum.isAnonymous() || cppEnum.isPrivate()
+                || cppEnum.typeEntry()->aliasMode() == EnumTypeEntry::AliasSource) {
                 continue;
+            }
             if (const auto inc = cppEnum.typeEntry()->include(); inc != classInclude)
                 par.includes.insert(inc);
             writeProtectedEnumSurrogate(protEnumsSurrogates, cppEnum);

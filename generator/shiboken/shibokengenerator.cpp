@@ -88,6 +88,7 @@ const char *const openTargetExternC =  R"(
 
 extern "C" {
 )";
+const char *const openExternC = "extern \"C\" {\n";
 const char *const closeExternC =  "} // extern \"C\"\n\n";
 const char *const richCompareComment =
     "// PYSIDE-74: By default, we redirect to object's tp_richcompare (which is `==`, `!=`).\n";
@@ -633,13 +634,6 @@ bool ShibokenGenerator::shouldRejectNullPointerArgument(const AbstractMetaFuncti
     return false;
 }
 
-QString ShibokenGenerator::cpythonBaseName(const AbstractMetaType &type)
-{
-    if (type.isCString())
-        return u"PyString"_s;
-    return cpythonBaseName(type.typeEntry());
-}
-
 QString ShibokenGenerator::cpythonBaseName(const AbstractMetaClassCPtr &metaClass)
 {
     return cpythonBaseName(metaClass->typeEntry());
@@ -663,25 +657,10 @@ QString ShibokenGenerator::containerCpythonBaseName(const ContainerTypeEntryCPtr
     return cPySequenceT;
 }
 
-QString ShibokenGenerator::cpythonBaseName(const TypeEntryCPtr &type)
+QString ShibokenGenerator::cpythonBaseName(const ComplexTypeEntryCPtr &type)
 {
-    QString baseName;
-    if (type->isWrapperType() || type->isNamespace()) { // && type->referenceType() == NoReference) {
-        baseName = u"Sbk_"_s + type->name();
-    } else if (type->isPrimitive()) {
-        const auto ptype = basicReferencedTypeEntry(type);
-        baseName = ptype->hasTargetLangApiType()
-                   ? ptype->targetLangApiName() : pythonPrimitiveTypeName(ptype->name());
-    } else if (type->isEnum()) {
-        baseName = cpythonEnumName(std::static_pointer_cast<const EnumTypeEntry>(type));
-    } else if (type->isFlags()) {
-        baseName = cpythonFlagsName(std::static_pointer_cast<const FlagsTypeEntry>(type));
-    } else if (type->isContainer()) {
-        const auto ctype = std::static_pointer_cast<const ContainerTypeEntry>(type);
-        baseName = containerCpythonBaseName(ctype);
-    } else {
-        baseName = cPyObjectT;
-    }
+    Q_ASSERT(type->isWrapperType() || type->isNamespace());
+    QString baseName = u"Sbk_"_s + type->name();
     return baseName.replace(u"::"_s, u"_"_s);
 }
 
@@ -690,7 +669,7 @@ QString ShibokenGenerator::cpythonTypeName(const AbstractMetaClassCPtr &metaClas
     return cpythonTypeName(metaClass->typeEntry());
 }
 
-QString ShibokenGenerator::cpythonTypeName(const TypeEntryCPtr &type)
+QString ShibokenGenerator::cpythonTypeName(const ComplexTypeEntryCPtr &type)
 {
     return cpythonBaseName(type) + u"_TypeF()"_s;
 }
@@ -1384,6 +1363,12 @@ void ShibokenGenerator::processClassCodeSnip(QString &code, const GeneratorConte
     code.replace(u"%CPPTYPE"_s, metaClass->name());
 
     processCodeSnip(code, context.effectiveClassName());
+}
+
+void ShibokenGenerator::processTypeCheckCodeSnip(QString &code, const QString &context) const
+{
+    code.replace("%in"_L1, "pyIn"_L1);
+    processCodeSnip(code, context);
 }
 
 void ShibokenGenerator::processCodeSnip(QString &code) const
@@ -2751,10 +2736,7 @@ QString ShibokenGenerator::pythonModuleObjectName(const QString &moduleName)
 
 QString ShibokenGenerator::convertersVariableName(const QString &moduleName)
 {
-    QString result = cppApiVariableNameOld(moduleName);
-    result.chop(1);
-    result.append(u"Converters"_s);
-    return result;
+    return "Sbk"_L1 + moduleCppPrefix(moduleName) + "TypeConverters"_L1;
 }
 
 static QString processInstantiationsVariableName(const AbstractMetaType &type)

@@ -28,7 +28,7 @@ mv "${CANONICAL_SP_DIR}" "${SPLIT_SP_DIR}"
 
 cp -a "${PREFIX}/lib/libshiboken6.abi3.so"* "${SPLIT_SP_DIR}/"
 
-if [ -d "${SP_DIR}/shiboken6-6.9.2.dist-info" ]; then
-  mv "${SP_DIR}/shiboken6-6.9.2.dist-info" "${SP_DIR}/shiboken6_uibcdf-6.9.2.dist-info"
-  perl -0pi -e 's/^shiboken6$/shiboken6_uibcdf/m' "${SP_DIR}/shiboken6_uibcdf-6.9.2.dist-info/top_level.txt" || true
+if [ -d "${SP_DIR}/shiboken6-6.10.1.dist-info" ]; then
+  mv "${SP_DIR}/shiboken6-6.10.1.dist-info" "${SP_DIR}/shiboken6_uibcdf-6.10.1.dist-info"
+  perl -0pi -e 's/^shiboken6$/shiboken6_uibcdf/m' "${SP_DIR}/shiboken6_uibcdf-6.10.1.dist-info/top_level.txt" || true
 fi

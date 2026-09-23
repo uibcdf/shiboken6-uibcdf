@@ -5,6 +5,7 @@
 #include "containertypeentry.h"
 #include "customtypenentry.h"
 #include "primitivetypeentry.h"
+#include "smartpointertypeentry.h"
 #include "valuetypeentry.h"
 
 #include <QtCore/qdebug.h>
@@ -95,6 +96,11 @@ QString TargetToNativeConversion::sourceTypeName() const
 
 QString TargetToNativeConversion::sourceTypeCheck() const
 {
+    return m_sourceTypeCheck;
+}
+
+QString TargetToNativeConversion::sourceTypeCheckFallback() const
+{
     if (!m_sourceTypeCheck.isEmpty())
         return m_sourceTypeCheck;
 
@@ -108,6 +114,10 @@ QString TargetToNativeConversion::sourceTypeCheck() const
         }
     }
 
+    if (m_sourceTypeName == "Py_None"_L1 || m_sourceTypeName == "PyNone"_L1)
+        return "%in == Py_None"_L1;
+    if (m_sourceTypeName == "SbkObject"_L1)
+        return "Shiboken::Object::checkType(%in)"_L1;
     return {};
 }
 
@@ -139,6 +149,8 @@ CustomConversionPtr CustomConversion::getCustomConversion(const TypeEntryCPtr &t
         return std::static_pointer_cast<const ContainerTypeEntry>(type)->customConversion();
     if (type->isValue())
         return std::static_pointer_cast<const ValueTypeEntry>(type)->customConversion();
+    if (type->isSmartPointer())
+        return std::static_pointer_cast<const SmartPointerTypeEntry>(type)->customConversion();
     return {};
 }
 

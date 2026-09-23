@@ -1,65 +1,19 @@
 # shiboken6-uibcdf
 
-Experimental UIBCDF packaging repo for the first member of the provisional
-Qt-for-Python standalone family.
+Experimental UIBCDF packaging of the Shiboken layer for the standalone
+Qt-for-Python stack used by MolSysViewer. This repository carries a suffixed
+`shiboken6_uibcdf` import namespace so it can be developed separately from
+the canonical PySide installation.
 
-Current scope:
+The published 6.9.2 line targets Linux and Python 3.13. The
+`python-3.14-qt-6.10.1` branch is an **unreleased candidate** built from
+official Qt for Python 6.10.1 source plus the retained UIBCDF namespace
+patches. Its first target is Linux/Python 3.14 with conda-forge
+`qt6-main=6.10.1`. Neither the source branch nor an isolated package import
+establishes support for the full five-package Qt host.
 
-- Linux
-- Python 3.13
-- version family: 6.9.2
-
-Why this repo exists:
-
-- molsysviewer packaging research showed that the standalone-critical Qt
-  route is not a small add-on on top of the current conda-forge stack
-- the clean provisional boundary now looks like an aligned family:
-  - shiboken6-uibcdf
-  - pyside6-essentials-uibcdf
-  - pyside6-addons-uibcdf
-- this repo owns only the shiboken6 layer of that family
-
-Current source of truth:
-
-- local manifest copied into this repo:
-  - manifests/shiboken6.files.txt
-  - manifests/shiboken6.runtime.txt
-- first self-contained packaging boundary staged in this repo:
-  - package_boundary/site-packages
-- original validated environment used to derive that first boundary:
-  /home/diego/Myopt/miniconda3/envs/molsyssuite-qt-spike
-- upstream codebase reference:
-  - ~/repos@others/pyside-setup
-
-Current repo layout:
-
-- upstream shiboken6 code is now staged directly in this repo:
-  - ApiExtractor
-  - generator
-  - libshiboken
-  - shibokenmodule
-  - cmake
-  - config.tests
-  - data
-  - tests
-- packaging/devtools remain repo-local and experimental:
-  - devtools/conda-build
-  - devtools/conda-envs
-  - manifests
-  - package_boundary
-
-Current packaging approach:
-
-- first pass is manifest-driven rather than source-build-driven
-- `devtools/conda-build/build.sh` copies the vendored `shiboken6` boundary
-  from `package_boundary/site-packages` into `$SP_DIR` by default
-- the source environment can be overridden with:
-  - `SHIBOKEN6_UIBCDF_SOURCE_PREFIX`
-
-First-pass success criteria:
-
-1. package the shiboken6 wheel boundary in a conda-shaped recipe
-2. expose:
-   - shiboken6/Shiboken.abi3.so
-   - shiboken6/libshiboken6.abi3.so.6.9
-3. keep the repo scoped to boundary-finding, not final polished release flow
+The Conda recipe builds Shiboken from the source in this repository. Files in
+`manifests/` and `package_boundary/` document the original 6.9.2 bootstrap;
+they are not the recipe input. The 3.14 migration, verification and remaining
+gates are tracked in [the transition guide](devguide/python_3_14_transition.md)
+and [issue #1](https://github.com/uibcdf/shiboken6-uibcdf/issues/1).

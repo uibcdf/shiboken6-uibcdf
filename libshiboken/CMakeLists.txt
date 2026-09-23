@@ -75,9 +75,11 @@ sbkcppstring.cpp sbkcppstring.h sbkcpptonumpy.h
 sbkenum.cpp sbkenum.h
 sbkerrors.cpp sbkerrors.h
 sbkfeature_base.cpp sbkfeature_base.h
-sbkmodule.cpp sbkmodule.h
+sbkmodule.cpp sbkmodule.h sbkmodule_p.h
 sbknumpy.cpp sbknumpycheck.h
 sbknumpyview.h
+sbkpep.h
+sbkpepbuffer.h
 sbkpython.h
 sbksmartpointer.cpp sbksmartpointer.h
 sbkstaticstrings.cpp sbkstaticstrings.h sbkstaticstrings_p.h
@@ -109,7 +111,7 @@ add_library(Shiboken6::libshiboken ALIAS libshiboken)
 target_include_directories(libshiboken PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-  $<INSTALL_INTERFACE:include/shiboken6>
+  $<INSTALL_INTERFACE:shiboken6/include>
 )
 
 if (NOT "${NUMPY_INCLUDE_DIR}" STREQUAL "")
@@ -170,6 +172,7 @@ install(FILES
         sbkerrors.h
         sbkfeature_base.h
         sbkmodule.h
+        sbkmodule_p.h
         sbknumpycheck.h
         sbknumpyview.h
         sbkpep.h
@@ -183,6 +186,8 @@ install(FILES
         shibokenmacros.h
         threadstatesaver.h
         shibokenbuffer.h
+        sbkpep.h
+        sbkpepbuffer.h
         sbkpython.h
         sbkwindows.h
         pep384impl.h
@@ -194,10 +199,27 @@ install(FILES
         signature.h
         signature_p.h
 
-        DESTINATION include/shiboken6${shiboken6_SUFFIX})
+        DESTINATION shiboken6${shiboken6_SUFFIX}/include)
 install(TARGETS libshiboken EXPORT Shiboken6Targets
                             LIBRARY DESTINATION "${LIB_INSTALL_DIR}"
                             ARCHIVE DESTINATION "${LIB_INSTALL_DIR}"
                             RUNTIME DESTINATION bin)
 install(EXPORT Shiboken6Targets NAMESPACE Shiboken6::
         DESTINATION ${LIB_INSTALL_DIR}/cmake/Shiboken6)
+
+# wheel specific installation
+if(NOT is_pyside6_superproject_build)
+
+    set_target_properties(libshiboken PROPERTIES
+        VERSION ${libshiboken_SOVERSION})
+
+    install(TARGETS libshiboken EXPORT Shiboken6WheelTargets
+            LIBRARY DESTINATION "shiboken6"
+            ARCHIVE DESTINATION "shiboken6"
+            RUNTIME DESTINATION "shiboken6")
+
+    install(EXPORT Shiboken6WheelTargets
+            NAMESPACE Shiboken6::
+            DESTINATION "${LIB_INSTALL_DIR}/wheels/cmake/Shiboken6"
+            FILE Shiboken6Targets.cmake)
+endif()
