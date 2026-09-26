@@ -1,5 +1,10 @@
 # Devguide
 
+For the current five-package 6.10.1 staging and public-release decision,
+start with the [Addons family release route](https://github.com/uibcdf/pyside6-addons-uibcdf/blob/python-3.14-qt-6.10.1/devguide/qt_6_10_1_release_route.md).
+This candidate's GitHub workflow stages only; its old direct-to-main shell
+uploader is disabled. These changes are not a staged or public release claim.
+
 This directory records the local packaging and maintenance recipe for shiboken6-uibcdf.
 
 Current entrypoint:

@@ -26,6 +26,10 @@ requirements:
     - libclang13
     - libgcc
     - libstdcxx
+  # The canonical conda-forge pyside6 package owns overlapping tools, CMake
+  # files and headers. Keep the validated UIBCDF-only route solver-enforced.
+  run_constrained:
+    - pyside6 <0
 
 test:
   commands:

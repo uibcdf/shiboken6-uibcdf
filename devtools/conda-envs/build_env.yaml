@@ -9,6 +9,6 @@ dependencies:
   - cmake
   - ninja
   - pkg-config
-  - qt6-main =6.9.2
+  - qt6-main =6.10.1
   - clangdev
   - llvmdev

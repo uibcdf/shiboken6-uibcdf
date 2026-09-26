@@ -1,58 +1,70 @@
-name: Build and upload conda packages
+name: Stage Shiboken 6.10.1 (Linux)
 
-# Requires a self-hosted runner on a Linux machine with enough RAM (~32 GB)
-# and CPU cores for the PySide6/Qt source build (~40 min with 14 cores).
-# Register a runner at:
-#   github.com/uibcdf/shiboken6-uibcdf → Settings → Actions → Runners
-# Or use an organization-level runner shared across all *-uibcdf stack repos.
-
+# Each interpreter has its own Conda artifact despite the .abi3.so filename.
+# GitHub Releases must not upload this coordinated family directly to main.
 on:
-  release:
-    types: ['released', 'prereleased']
-
   workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact 40-character candidate commit to build
+        required: true
+        type: string
+      python_version:
+        description: Python minor for this binding artifact
+        required: true
+        type: choice
+        options: ["3.11", "3.12", "3.13", "3.14"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qt6101-stage-shiboken-${{ inputs.python_version }}
+  cancel-in-progress: false
 
 jobs:
-  conda_deployment_with_new_tag:
-    name: Conda deployment of package with Python ${{ matrix.python-version }}
+  stage:
     runs-on: [self-hosted, linux]
+    timeout-minutes: 180
     env:
-      RELEASE_VERSION: ${{ github.event.release.tag_name }}
-      CPU_COUNT: "14"
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.13"]
-
+      CPU_COUNT: "12"
     steps:
-
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup conda env
-        uses: mamba-org/setup-micromamba@v2
+      - name: Verify the immutable candidate input
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/python-3.14-qt-6.10.1
+          test "$GITHUB_SHA" = "$EXPECTED_COMMIT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+      - uses: mamba-org/setup-micromamba@v2
         with:
           environment-file: devtools/conda-envs/build_env.yaml
           environment-name: build
           condarc: |
             channels:
+              - uibcdf/label/staging
               - uibcdf
               - conda-forge
             channel_priority: strict
-          create-args: >-
-            python=${{ matrix.python-version }}
-
-      - name: Build and upload the conda packages
-        uses: uibcdf/action-build-and-upload-conda-packages@main
+          create-args: python=${{ inputs.python_version }}
+      - name: Build, test and upload only to staging
+        id: package
+        uses: uibcdf/action-build-and-upload-conda-packages@v2.2.2
         with:
           meta_yaml_dir: devtools/conda-build
           mambabuild: false
           user: uibcdf
-          label: main
-          conda_build_args: --package-format conda
-          platform_linux-64: true
-          platform_osx-64: false
-          platform_osx-arm64: false
-          platform_win-64: false
+          label: staging
+          conda_build_args: >-
+            --package-format conda --python ${{ inputs.python_version }}
+            --override-channels -c uibcdf/label/staging -c uibcdf -c conda-forge
           token: ${{ secrets.ANACONDA_UIBCDF_TOKEN }}
+      - name: Retain the staged producer evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.evidence_artifact_name }}
+          path: ${{ steps.package.outputs.evidence_path }}
+          if-no-files-found: error
