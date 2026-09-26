@@ -24,10 +24,10 @@ concurrency:
 
 jobs:
   stage:
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      CPU_COUNT: "12"
+      CPU_COUNT: "4"
     steps:
       - uses: actions/checkout@v4
       - name: Verify the immutable candidate input
