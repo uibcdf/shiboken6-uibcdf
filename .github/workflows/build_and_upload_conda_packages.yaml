@@ -63,8 +63,10 @@ jobs:
             --override-channels -c uibcdf/label/staging -c uibcdf -c conda-forge
           token: ${{ secrets.ANACONDA_UIBCDF_TOKEN }}
       - name: Retain the staged producer evidence
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.package.outputs.evidence_path != '' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ steps.package.outputs.evidence_artifact_name }}
           path: ${{ steps.package.outputs.evidence_path }}
           if-no-files-found: error
+          retention-days: 7
